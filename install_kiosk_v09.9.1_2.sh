@@ -3330,14 +3330,17 @@ function startMasterTimer(){
     // 6. SITE ROTATION
     if(!showingHidden&&views.length>1){
       const currentTabIdx=viewIndexToTabIndex(currentIndex);
-      
+
       if(currentTabIdx>=0&&tabs[currentTabIdx]){
         const siteDuration=parseInt(tabs[currentTabIdx].duration)||0;
-        
+
         if(siteDuration>0){
           const timeOnSite=now-siteStartTime;
-          
-          if(timeOnSite>=siteDuration*1000){
+
+          // CRITICAL FIX: Don't auto-rotate if time extension is active
+          const hasActiveExtension=(inactivityExtensionUntil>0&&now<inactivityExtensionUntil);
+
+          if(timeOnSite>=siteDuration*1000&&!hasActiveExtension){
             rotateToNextSite();
             return;
           }
