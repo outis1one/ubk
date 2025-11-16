@@ -3353,14 +3353,17 @@ function startMasterTimer(){
       }
     }
     
-// 7. HOME RETURN CHECK
-    if(homeTabIndex>=0&&!showingHidden&&manualNavigationMode){
+// 7. INACTIVITY CHECK (works on ALL pages including home!)
+    if(homeTabIndex>=0&&!showingHidden){
       const homeViewIdx=getHomeViewIndex();
       const currentTabIdx=viewIndexToTabIndex(currentIndex);
-      
-      if(homeViewIdx>=0&&currentIndex!==homeViewIdx){
+      const isOnHomePage=(homeViewIdx>=0&&currentIndex===homeViewIdx);
+
+      // CRITICAL FIX: Allow inactivity prompt on ALL pages, including home
+      // Only check if we're in manual mode OR on home page
+      if(manualNavigationMode||isOnHomePage){
         const idleTime=now-lastUserInteraction;
-        
+
         // CRITICAL FIX: Use absolute time check for extensions
         let effectiveTimeout=inactivityTimeout;
         if(inactivityExtensionUntil>0&&now<inactivityExtensionUntil){
@@ -3369,37 +3372,36 @@ function startMasterTimer(){
             const remaining=Math.floor((inactivityExtensionUntil-now)/1000);
             const remMin=Math.floor(remaining/60);
             const remSec=remaining%60;
-            console.log('[HOME] ⏰ Extended mode: '+remMin+'m '+remSec+'s remaining');
+            console.log('[INACTIVITY] ⏰ Extended mode: '+remMin+'m '+remSec+'s remaining');
           }
           return;  // Skip timeout check during extension
         }else if(inactivityExtensionUntil>0&&now>=inactivityExtensionUntil){
           // Extension expired - clear it and check timeout
-          console.log('[HOME] ⏰ Extension expired - checking timeout');
+          console.log('[INACTIVITY] ⏰ Extension expired - checking timeout');
           inactivityExtensionUntil=0;
         }
-        
+
         // Log every 15 seconds
         if(Math.floor(idleTime/15000)!==Math.floor((idleTime-1000)/15000)){
           const idleMinutes=Math.floor(idleTime/60000);
           const idleSeconds=Math.floor((idleTime%60000)/1000);
           const timeoutMinutes=Math.floor(effectiveTimeout/60000);
           const timeoutSeconds=Math.floor((effectiveTimeout%60000)/1000);
-          console.log('[HOME] 🏠 IDLE: '+idleMinutes+'m '+idleSeconds+'s / '+timeoutMinutes+'m '+timeoutSeconds+'s');
+          const location=isOnHomePage?'HOME PAGE':'OTHER PAGE';
+          console.log('[INACTIVITY] 🕒 '+location+' IDLE: '+idleMinutes+'m '+idleSeconds+'s / '+timeoutMinutes+'m '+timeoutSeconds+'s');
         }
-        
-if(idleTime>=effectiveTimeout){
+
+        if(idleTime>=effectiveTimeout){
           if(!promptWindow||promptWindow.isDestroyed()){
-            console.log('[HOME] 🔔 *** SHOWING PROMPT NOW ***');
+            const location=isOnHomePage?'home page':'other page';
+            console.log('[INACTIVITY] 🔔 *** SHOWING PROMPT (on '+location+') ***');
             showInactivityPrompt();
           }
         }
-      }else{
-        console.log('[HOME-DEBUG] ✗ On home view, no action needed');
       }
     }else{
-      if(homeTabIndex<0)console.log('[HOME-DEBUG] ✗ No home tab configured');
-      if(showingHidden)console.log('[HOME-DEBUG] ✗ Showing hidden tabs');
-      if(!manualNavigationMode)console.log('[HOME-DEBUG] ✗ Not in manual navigation mode');
+      if(homeTabIndex<0)console.log('[INACTIVITY-DEBUG] ✗ No home tab configured');
+      if(showingHidden)console.log('[INACTIVITY-DEBUG] ✗ Showing hidden tabs');
     }
   },1000);
 }
@@ -3490,24 +3492,27 @@ function getHomeViewIndex(){
 function returnToHome(){
   const homeViewIdx=getHomeViewIndex();
   if(homeViewIdx<0)return;
-  
+
   console.log('[HOME] 🏠 RETURNING TO HOME → manualNavigationMode=FALSE');
-  
+
   if(showingHidden){
     showingHidden=false;
     currentHiddenIndex=0;
   }
-  
+
   if(promptWindow&&!promptWindow.isDestroyed()){
     promptWindow.close();
     promptWindow=null;
   }
-  
+
   manualNavigationMode=false;
   currentIndex=homeViewIdx;
   attachView(currentIndex);
-  
-  inactivityExtensionUntil=0;
+
+  // CRITICAL FIX: Don't clear extensions unless explicitly requested
+  // Extensions are only cleared when user chooses "Return to Home" button
+  // or when the prompt times out (no response)
+  // Don't auto-clear here - let the extension logic handle expiration
   markActivity();
 }
 
@@ -3525,12 +3530,13 @@ function showInactivityPrompt(){
   });
   
   promptWindow.loadFile(path.join(__dirname,'inactivity-prompt-extended.html'));
-  
+
   promptWindow.on('closed',()=>{
     promptWindow=null;
   });
-  
-  setTimeout(()=>{
+
+  // CRITICAL FIX: Store timeout ID so we can cancel it when user responds
+  const promptTimeoutId=setTimeout(()=>{
     if(promptWindow&&!promptWindow.isDestroyed()){
       console.log('[PROMPT] No response - returning home');
       promptWindow.close();
@@ -3538,24 +3544,30 @@ function showInactivityPrompt(){
       returnToHome();
     }
   },INACTIVITY_PROMPT_TIMEOUT);
-  
+
   ipcMain.once('user-still-here',(event,minutes)=>{
+    // CRITICAL FIX: Cancel the auto-return timeout since user responded!
+    clearTimeout(promptTimeoutId);
+
     if(promptWindow&&!promptWindow.isDestroyed()){
       promptWindow.close();
     }
     promptWindow=null;
-    
+
     if(minutes===-1){
+      // User chose "Return to Home" - clear extension and go home
       inactivityExtensionUntil=0;
       returnToHome();
     }else if(minutes===0){
+      // User chose "I'm still here" - just mark activity, no extension
       inactivityExtensionUntil=0;
       markActivity();
     }else{
+      // User chose a time extension - grant it!
       const now=Date.now();
       inactivityExtensionUntil=now+(minutes*60*1000);
       lastUserInteraction=now;
-      console.log('[PROMPT] Extended until: '+new Date(inactivityExtensionUntil).toLocaleTimeString());
+      console.log('[PROMPT] ⏰ Extended until: '+new Date(inactivityExtensionUntil).toLocaleTimeString());
     }
   });
 }
