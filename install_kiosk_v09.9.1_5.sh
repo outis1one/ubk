@@ -3468,6 +3468,14 @@ function attachView(i){
 function nextTab(){
   if(!views.length||showingHidden)return;
   console.log('[MANUAL] User switched tab forward → manualNavigationMode=TRUE');
+
+  // CRITICAL FIX: Clear time extension when user manually switches tabs
+  // If user granted time on one page, then manually left, they're done with it
+  if(inactivityExtensionUntil>0){
+    console.log('[MANUAL] ⏰ Clearing time extension - user manually switched tabs');
+    inactivityExtensionUntil=0;
+  }
+
   manualNavigationMode=true;
   currentIndex=(currentIndex+1)%views.length;
   attachView(currentIndex);
@@ -3477,6 +3485,14 @@ function nextTab(){
 function prevTab(){
   if(!views.length||showingHidden)return;
   console.log('[MANUAL] User switched tab backward → manualNavigationMode=TRUE');
+
+  // CRITICAL FIX: Clear time extension when user manually switches tabs
+  // If user granted time on one page, then manually left, they're done with it
+  if(inactivityExtensionUntil>0){
+    console.log('[MANUAL] ⏰ Clearing time extension - user manually switched tabs');
+    inactivityExtensionUntil=0;
+  }
+
   manualNavigationMode=true;
   currentIndex=(currentIndex-1+views.length)%views.length;
   attachView(currentIndex);
