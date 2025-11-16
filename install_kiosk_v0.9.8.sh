@@ -11,9 +11,11 @@
 #   * Auto-lock after configurable timeout (default 30 minutes)
 #   * Black lockout screen with password prompt
 #   * Session unlocks with correct password
-# - Fixed return-to-home popup showing on home screen
-#   * Popup now only appears on timed sites
-#   * Home screen no longer triggers inactivity prompt
+# - Renamed "Return to Home" to "Return to Rotation"
+#   * Button changed from "🏠 Return to home now" to "🔄 Return to rotation"
+#   * If not on home page: returns to home page, then starts rotation
+#   * If on home page: just starts the rotation
+#   * Allows time extensions even on home screen (e.g., viewing recipes)
 # - Fixed site edit menu not returning to configuration menu
 #   * Edit site URL flow now completes properly
 # - Time extension features work correctly
@@ -3584,8 +3586,8 @@ function markActivity(){
   // CRITICAL FIX: Don't clear time extensions on user activity!
   // Extensions should only be cleared when:
   // 1. They naturally expire
-  // 2. User explicitly returns home
-  // 3. User chooses "Return to Home" from prompt
+  // 2. User explicitly returns to rotation
+  // 3. User chooses "Return to Rotation" from prompt
   // Do NOT clear here - user activity during extension should be allowed!
 }
 
@@ -3798,15 +3800,15 @@ function startMasterTimer(){
       }
     }
     
-// 7. INACTIVITY CHECK (works on timed sites, not home!)
+// 7. INACTIVITY CHECK (works on ALL pages including home!)
     if(homeTabIndex>=0&&!showingHidden){
       const homeViewIdx=getHomeViewIndex();
       const currentTabIdx=viewIndexToTabIndex(currentIndex);
       const isOnHomePage=(homeViewIdx>=0&&currentIndex===homeViewIdx);
 
-      // v0.9.8 FIX: Don't show inactivity prompt on home page
-      // Only check if we're in manual mode OR NOT on home page (i.e., on a timed site)
-      if(manualNavigationMode||!isOnHomePage){
+      // v0.9.8: Show inactivity prompt on ALL pages (including home)
+      // This allows users to extend time even when viewing recipes, etc.
+      if(manualNavigationMode||isOnHomePage){
         const idleTime=now-lastUserInteraction;
 
         // CRITICAL FIX: Use absolute time check for extensions
@@ -3974,7 +3976,7 @@ function returnToHome(){
   const homeViewIdx=getHomeViewIndex();
   if(homeViewIdx<0)return;
 
-  console.log('[HOME] 🏠 RETURNING TO HOME → manualNavigationMode=FALSE');
+  console.log('[HOME] 🔄 RETURNING TO ROTATION (via home) → manualNavigationMode=FALSE');
 
   if(showingHidden){
     showingHidden=false;
@@ -3986,12 +3988,16 @@ function returnToHome(){
     promptWindow=null;
   }
 
+  // v0.9.8: "Return to Rotation" behavior
+  // If NOT on home page: go to home page first
+  // Then restart rotation by setting manualNavigationMode=false
+  // If already on home page: just restart the rotation
   manualNavigationMode=false;
   currentIndex=homeViewIdx;
   attachView(currentIndex);
 
   // CRITICAL FIX: Don't clear extensions unless explicitly requested
-  // Extensions are only cleared when user chooses "Return to Home" button
+  // Extensions are only cleared when user chooses "Return to Rotation" button
   // or when the prompt times out (no response)
   // Don't auto-clear here - let the extension logic handle expiration
   markActivity();
@@ -4036,7 +4042,7 @@ function showInactivityPrompt(){
     promptWindow=null;
 
     if(minutes===-1){
-      // User chose "Return to Home" - clear extension and go home
+      // User chose "Return to Rotation" - clear extension and restart rotation
       inactivityExtensionUntil=0;
       returnToHome();
     }else if(minutes===0){
@@ -5103,7 +5109,7 @@ echo "[15/27] Creating inactivity prompt..."
       </button>
       
       <button class="btn btn-home" onclick="goHome()">
-        🏠 Return to home now
+        🔄 Return to rotation
       </button>
     </div>
     
@@ -5132,7 +5138,7 @@ echo "[15/27] Creating inactivity prompt..."
 
    function goHome() {
       clearInterval(interval);
-      console.log('[PROMPT] User requested immediate home return');
+      console.log('[PROMPT] User requested return to rotation');
       ipcRenderer.send('user-still-here', -1);
     }
     
