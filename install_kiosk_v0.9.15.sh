@@ -1,9 +1,19 @@
 #!/bin/bash
 ################################################################################
-###   Ubuntu Based Kiosk (UBK) v0.9.14         ###
+###   Ubuntu Based Kiosk (UBK) v0.9.15         ###
 ################################################################################
 #
-# RELEASE v0.9.14 - Restore Simpler Working Logic
+# RELEASE v0.9.15 - Interaction-Based Return to Rotation Popup
+#
+# What's in v0.9.15:
+# - Return to rotation popup now appears on ANY user interaction
+#   * Any touch, click, scroll, or keyboard input triggers the popup
+#   * Exception: popup does NOT appear when media is playing
+#   * Gives users immediate option to extend time on current URL
+# - Time extension options remain the same (15/30/60/120 minutes)
+# - Popup pauses rotation while displayed
+# - Popup appears once per site load (won't spam on every interaction)
+# - Manual navigation and automatic rotation both trigger popup on interaction
 #
 # What's in v0.9.14:
 # - Reverted to simpler, working logic from v09.9.1_7
@@ -157,7 +167,7 @@ set -euo pipefail
 ### SECTION 1: CONSTANTS & GLOBALS
 ################################################################################
 
-SCRIPT_VERSION="0.9.10"
+SCRIPT_VERSION="0.9.15"
 KIOSK_USER="kiosk"
 BUILD_USER="${SUDO_USER:-$(whoami)}"
 KIOSK_HOME="/home/${KIOSK_USER}"
@@ -3605,7 +3615,7 @@ const path=require('path');
 const os=require('os');
 
 const CONFIG_FILE=path.join(__dirname,'config.json');
-const VERSION='0.9.14';
+const VERSION='0.9.15';
 
 let mainWindow,views=[],hiddenViews=[],tabs=[],currentIndex=0,showingHidden=false;
 let pinWindow=null,promptWindow=null,htmlKeyboardWindow=null;
@@ -3626,6 +3636,7 @@ let mediaIsPlaying=false;
 let userRecentlyActive=false;
 let keyboardIsOpen=false;
 let keyboardClosePending=false;
+let popupShownForCurrentSite=false;
 
 const USER_ACTIVITY_PAUSE=60000;
 const KEYBOARD_AUTO_CLOSE=30000;
@@ -3703,6 +3714,14 @@ function markActivity(resetLockoutTimer){
     console.log('[ACTIVITY] Closing inactivity prompt');
     promptWindow.close();
     promptWindow=null;
+  }
+
+  // v0.9.15: Show return to rotation popup on first interaction with site
+  // Exception: Don't show if media is playing or session is locked
+  if(!popupShownForCurrentSite&&!mediaIsPlaying&&!sessionLocked&&timeSinceLastActivity>5000){
+    console.log('[ACTIVITY] 🔔 First interaction with site - showing return to rotation popup');
+    popupShownForCurrentSite=true;
+    showInactivityPrompt();
   }
 
   // CRITICAL FIX: Don't clear time extensions on user activity!
@@ -4056,6 +4075,9 @@ function attachView(i,isAutoRotation){
 
   views[i].webContents.focus();
   siteStartTime=Date.now();
+
+  // v0.9.15: Reset popup flag when site changes
+  popupShownForCurrentSite=false;
 }
 
 function nextTab(){
@@ -5248,9 +5270,9 @@ echo "[15/27] Creating inactivity prompt..."
 </head>
 <body>
   <div class="container">
-    <h2>👋 Are you still here?</h2>
+    <h2>⏸️ Pause Rotation</h2>
     <div class="message">
-      No activity detected. Choose an option:
+      Would you like to stay on this page?
     </div>
     <div class="countdown" id="countdown">15</div>
     
@@ -5281,9 +5303,9 @@ echo "[15/27] Creating inactivity prompt..."
     </div>
     
     <div class="info">
-      ℹ️ Extensions pause the inactivity timer<br>
-      Media playback (video/audio) automatically pauses the timer<br>
-      Maximum extension: 4 hours (safety timeout)
+      ℹ️ Choose how long to stay on this page<br>
+      Media playback (video/audio) won't trigger this popup<br>
+      Select "Return to rotation" to resume automatic rotation
     </div>
   </div>
   <script>
