@@ -1,9 +1,20 @@
 #!/bin/bash
 ################################################################################
-###   Ubuntu Based Kiosk (UBK) v0.9.10         ###
+###   Ubuntu Based Kiosk (UBK) v0.9.11         ###
 ################################################################################
 #
-# RELEASE v0.9.10 - Rotation Logic Fixes
+# RELEASE v0.9.11 - Media Playback Clarifications
+#
+# What's in v0.9.11:
+# - Clarified media playback behavior in comments
+#   * While media plays: NO rotation, NO prompts, NOTHING interrupts
+#   * Media only pauses for: media ends, user pauses, session lockout, display schedule
+#   * After media stops: 30-second grace period ALWAYS applies
+#   * After grace period: Normal inactivity and rotation rules resume
+# - Inactivity timeout is user-configurable
+#   * Default: 2 minutes (120 seconds)
+#   * Can be changed via Sites menu when setting home site
+#   * Value stored in seconds in config, converted to milliseconds in app
 #
 # What's in v0.9.10:
 # - Fixed rotation logic to properly handle user interaction
@@ -3865,16 +3876,19 @@ function startMasterTimer(){
     }
     
     // 3. MEDIA BLOCKING
+    // While media plays: NO rotation, NO prompts, NOTHING interrupts playback
     if(mediaIsPlaying){
       return;
     }
-    
+
     // 4. GRACE PERIOD
+    // After media stops: Always wait 30 seconds before rotation or prompts
+    // This prevents interruptions when video/audio ends naturally
     const timeSinceMediaStopped=now-lastMediaStateChange;
     if(timeSinceMediaStopped<MEDIA_GRACE_PERIOD){
       return;
     }
-    
+
     // 5. USER ACTIVITY CHECK
     const timeSinceInteraction=now-lastUserInteraction;
     userRecentlyActive=timeSinceInteraction<USER_ACTIVITY_PAUSE;
