@@ -14,6 +14,10 @@
 #   * Inactivity check now happens BEFORE rotation check
 #   * Prevents rotation from interrupting the inactivity prompt
 #   * Rotation pauses while inactivity prompt is displayed
+# - Fixed session lockout being interrupted by rotation
+#   * Rotation now pauses completely when session is locked
+#   * Inactivity prompts won't appear while session is locked
+#   * Password lockout screen stays visible until correct password entered
 #
 # Previous features (v0.9.8):
 # - Added password-protected session lockout
@@ -3832,7 +3836,8 @@ function startMasterTimer(){
     // 6. INACTIVITY CHECK (works on ALL pages where user has interacted!)
     // v0.9.9 FIX: Check inactivity BEFORE rotation to ensure prompt appears on rotation sites
     // The prompt allows user to continue or return to rotation
-    if(!showingHidden){
+    // Don't show inactivity prompt if session is locked
+    if(!showingHidden&&!sessionLocked){
       const homeViewIdx=getHomeViewIndex();
       const currentTabIdx=viewIndexToTabIndex(currentIndex);
       const isOnHomePage=(homeViewIdx>=0&&currentIndex===homeViewIdx);
@@ -3884,8 +3889,8 @@ function startMasterTimer(){
     }
 
     // 7. SITE ROTATION
-    // v0.9.9: Don't rotate if inactivity prompt is showing
-    if(!showingHidden&&views.length>1&&(!promptWindow||promptWindow.isDestroyed())){
+    // v0.9.9: Don't rotate if inactivity prompt is showing or session is locked
+    if(!showingHidden&&views.length>1&&(!promptWindow||promptWindow.isDestroyed())&&!sessionLocked){
       const currentTabIdx=viewIndexToTabIndex(currentIndex);
 
       if(currentTabIdx>=0&&tabs[currentTabIdx]){
