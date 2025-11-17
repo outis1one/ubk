@@ -4068,6 +4068,11 @@ function nextTab(){
   // v0.9.10: Manual swipe RESUMES rotation on new page
   // This is navigation, not content interaction - set AFTER markActivity
   manualNavigationMode=false;
+
+  // v0.9.10: Manual swipe counts as interaction with new page
+  // This ensures inactivity prompt will fire even on 0-time pages
+  // If user swipes to page B but never touches it, prompt still appears after timeout
+  userInteractedWithCurrentSite=true;
   console.log('[MANUAL] User switched tab forward → manualNavigationMode=FALSE (rotation will resume)');
 }
 
@@ -4088,6 +4093,11 @@ function prevTab(){
   // v0.9.10: Manual swipe RESUMES rotation on new page
   // This is navigation, not content interaction - set AFTER markActivity
   manualNavigationMode=false;
+
+  // v0.9.10: Manual swipe counts as interaction with new page
+  // This ensures inactivity prompt will fire even on 0-time pages
+  // If user swipes to page B but never touches it, prompt still appears after timeout
+  userInteractedWithCurrentSite=true;
   console.log('[MANUAL] User switched tab backward → manualNavigationMode=FALSE (rotation will resume)');
 }
 
