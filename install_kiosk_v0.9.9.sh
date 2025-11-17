@@ -9,15 +9,29 @@
 # - Moved Session Lockout configuration from Sites menu to Core Settings menu
 #   * Now accessible as option 7 in Core Settings
 #   * Makes password protection easier to find and configure
+# - Password protection now triggers on bootup, resume, and lockout timeout
+#   * Password prompt appears immediately on boot if lockout enabled
+#   * Password prompt appears after system suspend/resume
+#   * Password prompt appears when screen is locked
+#   * This ensures kiosk is always protected when password feature is enabled
 # - Fixed inactivity popup not appearing on rotation sites
 #   * Popup now appears on ALL sites where user has interacted (not just manual sites)
 #   * Inactivity check now happens BEFORE rotation check
+#   * Auto-rotation preserves user interaction flag (critical fix!)
 #   * Prevents rotation from interrupting the inactivity prompt
 #   * Rotation pauses while inactivity prompt is displayed
 # - Fixed session lockout being interrupted by rotation
 #   * Rotation now pauses completely when session is locked
 #   * Inactivity prompts won't appear while session is locked
 #   * Password lockout screen stays visible until correct password entered
+# - Fixed lockout timeout not firing independently
+#   * Lockout timer now separate from inactivity timer (uses lastLockoutCheck)
+#   * Responding to inactivity prompts no longer resets lockout timer
+#   * Only actual user interaction with content resets lockout timer
+#   * Ensures lockout fires even if user keeps responding to inactivity prompts
+# - Fixed script bailing on manual electron update
+#   * Changed from hard exit to graceful error handling
+# - Changed "Nuclear reinstall" message to "Reinstall complete! System is fresh."
 #
 # Previous features (v0.9.8):
 # - Added password-protected session lockout
@@ -3426,7 +3440,7 @@ full_reinstall() {
     fi
     
     echo ""
-    log_success "Nuclear reinstall complete! System is FRESH."
+    log_success "Reinstall complete! System is fresh."
     echo ""
     pause
 }
@@ -3528,7 +3542,7 @@ first_time_install() {
 ###################################################################
 echo "[13/27] Installing Electron..."
 sudo -u "$KIOSK_USER" tee "$KIOSK_DIR/main.js" > /dev/null <<'MAINJS'
-const {app,BrowserWindow,BrowserView,globalShortcut,ipcMain,dialog}=require('electron');
+const {app,BrowserWindow,BrowserView,globalShortcut,ipcMain,dialog,powerMonitor}=require('electron');
 const {exec}=require('child_process');
 const fs=require('fs');
 const path=require('path');
@@ -3612,7 +3626,7 @@ function loadConfig(){
   }
 }
 
-function markActivity(){
+function markActivity(resetLockoutTimer){
   const now=Date.now();
   const timeSinceLastActivity=now-lastUserInteraction;
 
@@ -3622,7 +3636,13 @@ function markActivity(){
 
   lastUserInteraction=now;
   userRecentlyActive=true;
-  lastLockoutCheck=now;  // Reset lockout timer on activity
+
+  // v0.9.9: Only reset lockout timer for actual user interaction (swipes, touches)
+  // NOT for inactivity prompt responses - this allows lockout to work independently
+  if(resetLockoutTimer){
+    lastLockoutCheck=now;
+    console.log('[ACTIVITY] Lockout timer reset');
+  }
 
   // v0.9.8: Mark that user has interacted with this site
   // This triggers inactivity prompt logic for ANY site (not just manual/home)
@@ -3911,8 +3931,10 @@ function startMasterTimer(){
     }
 
 // 8. LOCKOUT CHECK (session lock after extended inactivity)
+    // v0.9.9: Use lastLockoutCheck instead of lastUserInteraction
+    // This ensures lockout timer is independent from inactivity prompts
     if(lockoutEnabled&&!sessionLocked){
-      const idleTime=now-lastUserInteraction;
+      const idleTime=now-lastLockoutCheck;
 
       // Log every 30 seconds when getting close to lockout
       if(idleTime>lockoutTimeout*0.75){
@@ -3941,12 +3963,12 @@ function stopMasterTimer(){
 
 function rotateToNextSite(){
   if(!views.length||showingHidden)return;
-  
+
   let nextIdx=(currentIndex+1)%views.length;
   const startIdx=nextIdx;
   let found=false;
   let attempts=0;
-  
+
   do{
     const tabIdx=viewIndexToTabIndex(nextIdx);
     if(tabIdx>=0&&tabs[tabIdx]){
@@ -3959,41 +3981,44 @@ function rotateToNextSite(){
     nextIdx=(nextIdx+1)%views.length;
     attempts++;
   }while(nextIdx!==startIdx&&attempts<views.length);
-  
+
   if(found&&nextIdx!==currentIndex){
     currentIndex=nextIdx;
-    attachView(currentIndex);
+    attachView(currentIndex,true);  // Pass true to indicate auto-rotation
   }
 }
 
-function attachView(i){
+function attachView(i,isAutoRotation){
   closeHTMLKeyboard();
-  
+
   if(!mainWindow||!views[i]||showingHidden)return;
-  
+
   currentIndex=i;
   mainWindow.setTopBrowserView(views[i]);
   const[w,h]=mainWindow.getContentSize();
   views[i].setBounds({x:0,y:0,width:w,height:h});
-  
+
   const tabIdx=viewIndexToTabIndex(i);
   if(tabIdx>=0&&tabs[tabIdx]){
     const configuredUrl=tabs[tabIdx].url;
     const currentUrl=views[i].webContents.getURL();
-    
+
     if(currentUrl&&!currentUrl.startsWith(configuredUrl)){
       programmaticNavigation=true;
       views[i].webContents.loadURL(configuredUrl);
     }
   }
-  
+
   views[i].webContents.focus();
   siteStartTime=Date.now();
 
-  // v0.9.8: Clear interaction flag when site changes
-  // Will be set back to true if user manually swiped here (markActivity called after)
-  // Will stay false if auto-rotated (no user interaction yet)
-  userInteractedWithCurrentSite=false;
+  // v0.9.9 CRITICAL FIX: Only reset interaction flag on MANUAL navigation
+  // Don't reset during auto-rotation - this allows inactivity prompt to work on rotation sites!
+  // Auto-rotation: user taps site A → rotates to site B after 30s → inactivity prompt can still appear
+  // Manual swipe: user deliberately navigated, reset the flag (will be set again by markActivity())
+  if(!isAutoRotation){
+    userInteractedWithCurrentSite=false;
+  }
 }
 
 function nextTab(){
@@ -4010,7 +4035,7 @@ function nextTab(){
   manualNavigationMode=true;
   currentIndex=(currentIndex+1)%views.length;
   attachView(currentIndex);
-  markActivity();
+  markActivity(true);  // Actual user interaction - reset lockout timer
 }
 
 function prevTab(){
@@ -4027,7 +4052,7 @@ function prevTab(){
   manualNavigationMode=true;
   currentIndex=(currentIndex-1+views.length)%views.length;
   attachView(currentIndex);
-  markActivity();
+  markActivity(true);  // Actual user interaction - reset lockout timer
 }
 
 function getHomeViewIndex(){
@@ -4066,11 +4091,9 @@ function returnToHome(){
 
   attachView(currentIndex);
 
-  // CRITICAL FIX: Don't clear extensions unless explicitly requested
-  // Extensions are only cleared when user chooses "Return to Rotation" button
-  // or when the prompt times out (no response)
-  // Don't auto-clear here - let the extension logic handle expiration
-  markActivity();
+  // v0.9.9: Don't reset lockout timer when returning to rotation
+  // This is a prompt response, not actual user interaction with content
+  markActivity();  // Resets inactivity timer but NOT lockout timer
 }
 
 function showInactivityPrompt(){
@@ -4116,11 +4139,13 @@ function showInactivityPrompt(){
       inactivityExtensionUntil=0;
       returnToHome();
     }else if(minutes===0){
-      // User chose "I'm still here" - just mark activity, no extension
+      // v0.9.9: User chose "I'm still here" - don't reset lockout timer
+      // This is a prompt response, not actual interaction with content
       inactivityExtensionUntil=0;
-      markActivity();
+      markActivity();  // Resets inactivity timer but NOT lockout timer
     }else{
       // User chose a time extension - grant it!
+      // Don't reset lockout timer - they're just buying more time
       const now=Date.now();
       inactivityExtensionUntil=now+(minutes*60*1000);
       lastUserInteraction=now;
@@ -4307,8 +4332,8 @@ function returnToTabs(){
   views[currentIndex].setBounds({x:0,y:0,width:w,height:h});
   showingHidden=false;
   currentHiddenIndex=0;
-  
-  markActivity();
+
+  markActivity(true);  // User toggled hidden - actual interaction
 }
 
 function showPinEntry(){
@@ -4407,9 +4432,9 @@ function createWindow(){
   
   mainWindow.setMenu(null);
   mainWindow.show();
-  
-  mainWindow.on('focus',()=>markActivity());
-  mainWindow.webContents.on('before-input-event',()=>markActivity());
+
+  mainWindow.on('focus',()=>markActivity(true));
+  mainWindow.webContents.on('before-input-event',()=>markActivity(true));
   
   if(!tabs.length){
     mainWindow.loadURL('data:text/html,<body>No Sites Configured</body>');
@@ -4456,17 +4481,17 @@ function createWindow(){
       });
     }
     
-    view.webContents.on('before-input-event',()=>markActivity());
+    view.webContents.on('before-input-event',()=>markActivity(true));
     view.webContents.on('did-start-loading',()=>{
       if(!programmaticNavigation){
-        markActivity();
+        markActivity(true);
       }
     });
     view.webContents.on('did-navigate',()=>{
       if(programmaticNavigation){
         programmaticNavigation=false;
       }else{
-        markActivity();
+        markActivity(true);
       }
     });
     
@@ -4503,6 +4528,14 @@ function createWindow(){
     setTimeout(()=>{
       attachView(startIndex);
       startMasterTimer();
+
+      // v0.9.9: Show lockout on boot if enabled
+      if(lockoutEnabled){
+        console.log('[LOCKOUT] 🔒 Password protection enabled - locking on boot');
+        setTimeout(()=>{
+          showLockout();
+        },500);
+      }
     },1000);
   }
   
@@ -4510,7 +4543,7 @@ function createWindow(){
   ipcMain.on('swipe-right',()=>{prevTab();});
   ipcMain.on('show-power-menu',showPowerMenu);
   ipcMain.on('toggle-hidden',toggleHidden);
-  ipcMain.on('user-activity',markActivity);
+  ipcMain.on('user-activity',()=>{markActivity(true);});  // Actual user interaction with content
   ipcMain.on('show-keyboard',()=>{showHTMLKeyboard();});
   ipcMain.on('close-keyboard',()=>{closeHTMLKeyboard();});
   ipcMain.on('keyboard-activity',()=>{markKeyboardActivity();});
@@ -4671,6 +4704,31 @@ app.on('window-all-closed',()=>{
 
 app.on('activate',()=>{
   if(BrowserWindow.getAllWindows().length===0)createWindow();
+});
+
+// v0.9.9: Lock on suspend/resume/screen lock if password enabled
+app.whenReady().then(()=>{
+  powerMonitor.on('suspend',()=>{
+    if(lockoutEnabled){
+      console.log('[LOCKOUT] 💤 System suspending - will lock on resume');
+    }
+  });
+
+  powerMonitor.on('resume',()=>{
+    if(lockoutEnabled){
+      console.log('[LOCKOUT] 🔒 System resumed - locking session');
+      setTimeout(()=>{
+        showLockout();
+      },500);
+    }
+  });
+
+  powerMonitor.on('lock-screen',()=>{
+    if(lockoutEnabled){
+      console.log('[LOCKOUT] 🔒 Screen locked - locking kiosk');
+      showLockout();
+    }
+  });
 });
 MAINJS
 #############################################################################
@@ -8277,7 +8335,7 @@ KBFUNC
       view.webContents.sendInputEvent({type:'keyDown',keyCode:key});\
       view.webContents.sendInputEvent({type:'char',keyCode:key});\
       view.webContents.sendInputEvent({type:'keyUp',keyCode:key});\
-      markActivity();\
+      markActivity(true);\
     }\
   });\
   ipcMain.on('close-keyboard',()=>{closeHTMLKeyboard();});\
@@ -8570,10 +8628,15 @@ if [[ "$CHECK_UPDATES" =~ ^[Yy]$ ]]; then
       if [[ "$DO_UPDATE" =~ ^[Yy]$ ]]; then
         echo "Updating to v${LATEST_ELECTRON}..."
         echo "This takes 1-2 minutes..."
-        
-        cd "$KIOSK_DIR" || exit 1
+
+        if ! cd "$KIOSK_DIR"; then
+          log_error "Cannot access kiosk directory: $KIOSK_DIR"
+          pause
+          return 1
+        fi
+
         sudo -u "$KIOSK_USER" npm install "electron@${LATEST_ELECTRON}" --save-exact
-        
+
         if [ $? -eq 0 ]; then
           echo "✓ Updated successfully!"
           echo ""
