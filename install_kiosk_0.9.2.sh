@@ -5051,6 +5051,82 @@ contextBridge.exposeInMainWorld('electronAPI',{
   showPauseDialog:()=>ipcRenderer.send('show-pause-dialog')
 });
 
+// Pause button state (MUST be outside DOMContentLoaded to persist across page loads)
+let pauseButton=null;
+let pauseButtonShouldShow=false;
+let pauseButtonShown=false;
+let pauseButtonHideTimer=null;
+const PAUSE_BUTTON_HIDE_DELAY=5000; // Hide after 5 seconds of inactivity
+
+// Pause button functions (must be outside DOMContentLoaded for IPC listener)
+function createPauseButton(){
+  if(pauseButton)return;
+
+  pauseButton=document.createElement('div');
+  pauseButton.id='electron-pause-button';
+  pauseButton.innerHTML='<div style="display:flex;gap:4px;"><div style="width:6px;height:24px;background:white;border-radius:2px;"></div><div style="width:6px;height:24px;background:white;border-radius:2px;"></div></div>';
+  pauseButton.title='Pause rotation';
+  pauseButton.style.cssText=`
+    position:fixed;bottom:20px;left:20px;width:60px;height:60px;
+    background:rgba(230,126,34,0.95);border:3px solid rgba(255,255,255,0.9);
+    border-radius:50%;display:none;align-items:center;justify-content:center;
+    font-size:32px;cursor:pointer;z-index:999999;
+    box-shadow:0 4px 12px rgba(0,0,0,0.4);user-select:none;
+  `;
+
+  pauseButton.addEventListener('click',(e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    ipcRenderer.send('show-pause-dialog');
+  });
+
+  document.body.appendChild(pauseButton);
+}
+
+function showPauseButton(){
+  if(!pauseButton)createPauseButton();
+  pauseButton.style.display='flex';
+  pauseButtonShown=true;
+
+  // Clear existing hide timer
+  if(pauseButtonHideTimer){
+    clearTimeout(pauseButtonHideTimer);
+    pauseButtonHideTimer=null;
+  }
+
+  // Set new hide timer - button will auto-hide after inactivity
+  pauseButtonHideTimer=setTimeout(()=>{
+    console.log('[PAUSE-BTN] Auto-hiding after '+PAUSE_BUTTON_HIDE_DELAY+'ms inactivity');
+    hidePauseButton();
+  },PAUSE_BUTTON_HIDE_DELAY);
+}
+
+function hidePauseButton(){
+  if(pauseButtonHideTimer){
+    clearTimeout(pauseButtonHideTimer);
+    pauseButtonHideTimer=null;
+  }
+  if(pauseButton){
+    pauseButton.style.display='none';
+    pauseButtonShown=false;
+  }
+}
+
+// Listen for pause button visibility control from main process
+// CRITICAL: This must be outside DOMContentLoaded so it doesn't reset on page load
+ipcRenderer.on('pause-button-visibility',(event,shouldShow)=>{
+  console.log('[PAUSE-BTN] Visibility update: shouldShow='+shouldShow);
+  pauseButtonShouldShow=shouldShow;
+  if(!shouldShow){
+    // If button should not show on this site, hide it immediately
+    console.log('[PAUSE-BTN] Hiding button (manual site)');
+    hidePauseButton();
+  }else{
+    console.log('[PAUSE-BTN] Button enabled - will show on user interaction');
+  }
+  // If shouldShow is true, button will appear on user interaction
+});
+
 window.addEventListener('DOMContentLoaded',()=>{
   document.addEventListener('contextmenu',e=>e.preventDefault());
   
@@ -5148,81 +5224,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(keyboardIcon)keyboardIcon.style.display='none';
   }
 
-  // Pause button functionality
-  let pauseButton=null;
-  let pauseButtonShouldShow=false;
-  let pauseButtonShown=false;
-  let pauseButtonHideTimer=null;
-  const PAUSE_BUTTON_HIDE_DELAY=5000; // Hide after 5 seconds of inactivity
-
-  function createPauseButton(){
-    if(pauseButton)return;
-
-    pauseButton=document.createElement('div');
-    pauseButton.id='electron-pause-button';
-    pauseButton.innerHTML='<div style="display:flex;gap:4px;"><div style="width:6px;height:24px;background:white;border-radius:2px;"></div><div style="width:6px;height:24px;background:white;border-radius:2px;"></div></div>';
-    pauseButton.title='Pause rotation';
-    pauseButton.style.cssText=`
-      position:fixed;bottom:20px;left:20px;width:60px;height:60px;
-      background:rgba(230,126,34,0.95);border:3px solid rgba(255,255,255,0.9);
-      border-radius:50%;display:none;align-items:center;justify-content:center;
-      font-size:32px;cursor:pointer;z-index:999999;
-      box-shadow:0 4px 12px rgba(0,0,0,0.4);user-select:none;
-    `;
-
-    pauseButton.addEventListener('click',(e)=>{
-      e.preventDefault();
-      e.stopPropagation();
-      ipcRenderer.send('show-pause-dialog');
-    });
-
-    document.body.appendChild(pauseButton);
-  }
-
-  function showPauseButton(){
-    if(!pauseButton)createPauseButton();
-    pauseButton.style.display='flex';
-    pauseButtonShown=true;
-
-    // Clear existing hide timer
-    if(pauseButtonHideTimer){
-      clearTimeout(pauseButtonHideTimer);
-      pauseButtonHideTimer=null;
-    }
-
-    // Set new hide timer - button will auto-hide after inactivity
-    pauseButtonHideTimer=setTimeout(()=>{
-      console.log('[PAUSE-BTN] Auto-hiding after '+PAUSE_BUTTON_HIDE_DELAY+'ms inactivity');
-      hidePauseButton();
-    },PAUSE_BUTTON_HIDE_DELAY);
-  }
-
-  function hidePauseButton(){
-    if(pauseButtonHideTimer){
-      clearTimeout(pauseButtonHideTimer);
-      pauseButtonHideTimer=null;
-    }
-    if(pauseButton){
-      pauseButton.style.display='none';
-      pauseButtonShown=false;
-    }
-  }
-
-  // Listen for pause button visibility control from main process
-  // Main process controls whether button should be available on this site
-  ipcRenderer.on('pause-button-visibility',(event,shouldShow)=>{
-    console.log('[PAUSE-BTN] Visibility update: shouldShow='+shouldShow);
-    pauseButtonShouldShow=shouldShow;
-    if(!shouldShow){
-      // If button should not show on this site, hide it immediately
-      console.log('[PAUSE-BTN] Hiding button (manual site)');
-      hidePauseButton();
-    }else{
-      console.log('[PAUSE-BTN] Button enabled - will show on user interaction');
-    }
-    // If shouldShow is true, button will appear on user interaction
-  });
-
+  // Pause button user interaction handler
   // Show pause button on user interaction (only if allowed on this site)
   let lastUserInteraction=0;
   const USER_INTERACTION_THROTTLE=100;
