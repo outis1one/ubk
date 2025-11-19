@@ -3315,7 +3315,7 @@ const path=require('path');
 const os=require('os');
 
 const CONFIG_FILE=path.join(__dirname,'config.json');
-const VERSION='0.9.0';
+const VERSION='0.9.2';
 
 let mainWindow,views=[],hiddenViews=[],tabs=[],currentIndex=0,showingHidden=false;
 let pinWindow=null,promptWindow=null,pauseWindow=null,htmlKeyboardWindow=null;
