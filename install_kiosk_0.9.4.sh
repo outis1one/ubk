@@ -140,6 +140,10 @@ ENABLE_KEYBOARD_BUTTON="true"
 ENABLE_PASSWORD_PROTECTION="false"
 LOCKOUT_PASSWORD=""
 LOCKOUT_TIMEOUT=0
+LOCKOUT_AT_TIME=""
+LOCKOUT_ACTIVE_START=""
+LOCKOUT_ACTIVE_END=""
+REQUIRE_PASSWORD_ON_BOOT="false"
 
 ################################################################################
 ### SECTION 2: HELPER/UTILITY FUNCTIONS  
@@ -954,6 +958,9 @@ configure_password_protection() {
     echo "  • Blank screen after inactivity period"
     echo "  • Password required to unlock"
     echo "  • Password required after display schedule wake-up"
+    echo "  • Optional: Lock at specific time"
+    echo "  • Optional: Only active during certain hours"
+    echo "  • Optional: Require password on system boot"
     echo
 
     # Load existing config if available
@@ -997,14 +1004,62 @@ configure_password_protection() {
         # Ask for lockout timeout
         echo
         echo "Session lockout time (minutes of inactivity):"
-        echo "  Enter 0 to only require password after display schedule wake-up"
+        echo "  Enter 0 to only require password after display schedule wake-up or boot"
         LOCKOUT_TIMEOUT=$(ask_integer "Lockout timeout in minutes" "30" 0 1440)
+
+        # Ask for time-based lockout
+        echo
+        if ask_yes_no "Lock automatically at a specific time each day?" "n"; then
+            read -r -p "Enter time to lock (HH:MM, 24-hour format, e.g., 17:00): " LOCKOUT_AT_TIME
+            # Validate time format
+            if [[ "$LOCKOUT_AT_TIME" =~ ^([0-1][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+                log_success "Will lock at ${LOCKOUT_AT_TIME} daily"
+            else
+                echo "⚠ Invalid time format, time-based lockout disabled"
+                LOCKOUT_AT_TIME=""
+            fi
+        else
+            LOCKOUT_AT_TIME=""
+        fi
+
+        # Ask for active hours
+        echo
+        if ask_yes_no "Only enforce lockout during specific hours?" "n"; then
+            read -r -p "Enter start time (HH:MM, e.g., 09:00): " LOCKOUT_ACTIVE_START
+            read -r -p "Enter end time (HH:MM, e.g., 17:00): " LOCKOUT_ACTIVE_END
+            # Validate time formats
+            if [[ "$LOCKOUT_ACTIVE_START" =~ ^([0-1][0-9]|2[0-3]):[0-5][0-9]$ ]] && \
+               [[ "$LOCKOUT_ACTIVE_END" =~ ^([0-1][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+                log_success "Lockout active ${LOCKOUT_ACTIVE_START} to ${LOCKOUT_ACTIVE_END}"
+            else
+                echo "⚠ Invalid time format, active hours disabled"
+                LOCKOUT_ACTIVE_START=""
+                LOCKOUT_ACTIVE_END=""
+            fi
+        else
+            LOCKOUT_ACTIVE_START=""
+            LOCKOUT_ACTIVE_END=""
+        fi
+
+        # Ask for boot password requirement
+        echo
+        if ask_yes_no "Require password on system boot/power on?" "y"; then
+            REQUIRE_PASSWORD_ON_BOOT="true"
+            log_success "Password will be required on boot"
+        else
+            REQUIRE_PASSWORD_ON_BOOT="false"
+            log_info "Password only required after inactivity or display wake"
+        fi
 
         log_success "Password protection enabled (lockout: ${LOCKOUT_TIMEOUT} min)"
     else
         ENABLE_PASSWORD_PROTECTION="false"
         LOCKOUT_PASSWORD=""
         LOCKOUT_TIMEOUT=0
+        LOCKOUT_AT_TIME=""
+        LOCKOUT_ACTIVE_START=""
+        LOCKOUT_ACTIVE_END=""
+        REQUIRE_PASSWORD_ON_BOOT="false"
         log_info "Password protection disabled"
     fi
 }
@@ -3148,6 +3203,12 @@ load_config() {
 
     LOCKOUT_PASSWORD=$(sudo -u "$KIOSK_USER" jq -r '.lockoutPassword // ""' "$CONFIG_PATH" 2>/dev/null)
     LOCKOUT_TIMEOUT=$(sudo -u "$KIOSK_USER" jq -r '.lockoutTimeout // 0' "$CONFIG_PATH" 2>/dev/null)
+    LOCKOUT_AT_TIME=$(sudo -u "$KIOSK_USER" jq -r '.lockoutAtTime // ""' "$CONFIG_PATH" 2>/dev/null)
+    LOCKOUT_ACTIVE_START=$(sudo -u "$KIOSK_USER" jq -r '.lockoutActiveStart // ""' "$CONFIG_PATH" 2>/dev/null)
+    LOCKOUT_ACTIVE_END=$(sudo -u "$KIOSK_USER" jq -r '.lockoutActiveEnd // ""' "$CONFIG_PATH" 2>/dev/null)
+
+    local loaded_boot_password=$(sudo -u "$KIOSK_USER" jq -r '.requirePasswordOnBoot // false' "$CONFIG_PATH" 2>/dev/null)
+    [[ "$loaded_boot_password" == "true" ]] && REQUIRE_PASSWORD_ON_BOOT="true" || REQUIRE_PASSWORD_ON_BOOT="false"
 
     local tab_count=$(sudo -u "$KIOSK_USER" jq -r '.tabs | length' "$CONFIG_PATH" 2>/dev/null || echo "0")
     URLS=()
@@ -3192,6 +3253,9 @@ save_config() {
     local password_json="false"
     [[ "$ENABLE_PASSWORD_PROTECTION" == "true" ]] && password_json="true"
 
+    local boot_password_json="false"
+    [[ "$REQUIRE_PASSWORD_ON_BOOT" == "true" ]] && boot_password_json="true"
+
     jq -n \
       --arg unit "s" \
       --argjson autoswitch "$auto_json" \
@@ -3206,7 +3270,11 @@ save_config() {
       --argjson enablePasswordProtection "$password_json" \
       --arg lockoutPassword "${LOCKOUT_PASSWORD:-}" \
       --argjson lockoutTimeout "${LOCKOUT_TIMEOUT:-0}" \
-      '{unit:$unit,autoswitch:$autoswitch,enableTouch:$enableTouch,dualSwipe:$dualSwipe,swipeMode:$swipeMode,allowNavigation:$allowNavigation,homeTabIndex:$homeTabIndex,inactivityTimeout:$inactivityTimeout,enablePauseButton:$enablePauseButton,enableKeyboardButton:$enableKeyboardButton,enablePasswordProtection:$enablePasswordProtection,lockoutPassword:$lockoutPassword,lockoutTimeout:$lockoutTimeout,tabs:[]}' > "$tmp"
+      --arg lockoutAtTime "${LOCKOUT_AT_TIME:-}" \
+      --arg lockoutActiveStart "${LOCKOUT_ACTIVE_START:-}" \
+      --arg lockoutActiveEnd "${LOCKOUT_ACTIVE_END:-}" \
+      --argjson requirePasswordOnBoot "$boot_password_json" \
+      '{unit:$unit,autoswitch:$autoswitch,enableTouch:$enableTouch,dualSwipe:$dualSwipe,swipeMode:$swipeMode,allowNavigation:$allowNavigation,homeTabIndex:$homeTabIndex,inactivityTimeout:$inactivityTimeout,enablePauseButton:$enablePauseButton,enableKeyboardButton:$enableKeyboardButton,enablePasswordProtection:$enablePasswordProtection,lockoutPassword:$lockoutPassword,lockoutTimeout:$lockoutTimeout,lockoutAtTime:$lockoutAtTime,lockoutActiveStart:$lockoutActiveStart,lockoutActiveEnd:$lockoutActiveEnd,requirePasswordOnBoot:$requirePasswordOnBoot,tabs:[]}' > "$tmp"
     
     if [[ ${#URLS[@]} -gt 0 ]]; then
         for idx in "${!URLS[@]}"; do
@@ -3519,6 +3587,10 @@ let enableKeyboardButton=true;
 let enablePasswordProtection=false;
 let lockoutPassword="";
 let lockoutTimeout=0;
+let lockoutAtTime="";
+let lockoutActiveStart="";
+let lockoutActiveEnd="";
+let requirePasswordOnBoot=false;
 
 // Password lockout state
 let isLockedOut=false;
@@ -3526,6 +3598,7 @@ let lockoutWindow=null;
 let lockoutTimer=null;
 let lockoutActivityTime=Date.now();
 let requirePasswordAfterDisplay=false;
+let lastScheduledLockCheck=0;
 
 function loadConfig(){
   try{
@@ -3545,12 +3618,19 @@ function loadConfig(){
     enablePasswordProtection=(config.enablePasswordProtection===true);
     lockoutPassword=config.lockoutPassword||"";
     lockoutTimeout=(config.lockoutTimeout||0)*60000; // Convert minutes to ms
-    
+    lockoutAtTime=config.lockoutAtTime||"";
+    lockoutActiveStart=config.lockoutActiveStart||"";
+    lockoutActiveEnd=config.lockoutActiveEnd||"";
+    requirePasswordOnBoot=(config.requirePasswordOnBoot===true);
+
     console.log('[CONFIG] ═══════════════════════════');
     console.log('[CONFIG] Home tab index:',homeTabIndex);
     console.log('[CONFIG] Inactivity timeout:',inactivityTimeout/1000,'seconds');
     console.log('[CONFIG] Navigation:',allowNavigation);
 console.log('[CONFIG] Pause button:',enablePauseButton);    console.log('[CONFIG] Keyboard button:',enableKeyboardButton);    console.log('[CONFIG] Password protection:',enablePasswordProtection);    console.log('[CONFIG] Lockout timeout:',lockoutTimeout/60000,'minutes');
+    if(lockoutAtTime)console.log('[CONFIG] Lock at time:',lockoutAtTime);
+    if(lockoutActiveStart&&lockoutActiveEnd)console.log('[CONFIG] Active hours:',lockoutActiveStart,'-',lockoutActiveEnd);
+    console.log('[CONFIG] Require password on boot:',requirePasswordOnBoot);
     console.log('[CONFIG] Sites:',config.tabs?.length||0);
     console.log('[CONFIG] ═══════════════════════════');
     
@@ -3728,15 +3808,64 @@ function unlockScreen(){
   lockoutActivityTime=Date.now();
 }
 
+// Helper: Check if current time is within active hours
+function isWithinActiveHours(){
+  if(!lockoutActiveStart||!lockoutActiveEnd)return true; // No restriction
+
+  const now=new Date();
+  const currentTime=now.getHours()*60+now.getMinutes(); // Current time in minutes
+
+  const[startH,startM]=lockoutActiveStart.split(':').map(Number);
+  const[endH,endM]=lockoutActiveEnd.split(':').map(Number);
+  const startMinutes=startH*60+startM;
+  const endMinutes=endH*60+endM;
+
+  // Handle overnight ranges (e.g., 22:00-06:00)
+  if(startMinutes>endMinutes){
+    return currentTime>=startMinutes||currentTime<endMinutes;
+  }
+
+  return currentTime>=startMinutes&&currentTime<endMinutes;
+}
+
+// Helper: Check if it's time to auto-lock
+function checkScheduledLockTime(){
+  if(!lockoutAtTime||isLockedOut)return;
+
+  const now=new Date();
+  const[targetH,targetM]=lockoutAtTime.split(':').map(Number);
+
+  // Check once per minute to avoid multiple locks
+  const currentMinute=now.getHours()*60+now.getMinutes();
+  const targetMinute=targetH*60+targetM;
+
+  if(currentMinute===targetMinute&&lastScheduledLockCheck!==currentMinute){
+    lastScheduledLockCheck=currentMinute;
+    console.log('[LOCKOUT] Scheduled lock time reached: '+lockoutAtTime);
+    showLockoutScreen();
+  }
+}
+
 function checkLockoutTimer(){
-  if(!enablePasswordProtection||lockoutTimeout<=0||isLockedOut)return;
+  if(!enablePasswordProtection||isLockedOut)return;
 
   const now=Date.now();
-  const timeSinceActivity=now-lockoutActivityTime;
 
-  if(timeSinceActivity>=lockoutTimeout){
-    console.log('[LOCKOUT] Timeout reached, locking screen');
-    showLockoutScreen();
+  // Check for scheduled lock time
+  checkScheduledLockTime();
+
+  // Check inactivity-based lockout
+  if(lockoutTimeout>0){
+    // Check if within active hours (if configured)
+    if(!isWithinActiveHours()){
+      return; // Outside active hours, don't enforce lockout
+    }
+
+    const timeSinceActivity=now-lockoutActivityTime;
+    if(timeSinceActivity>=lockoutTimeout){
+      console.log('[LOCKOUT] Timeout reached, locking screen');
+      showLockoutScreen();
+    }
   }
 }
 
@@ -4600,6 +4729,14 @@ function createWindow(){
     setTimeout(()=>{
       attachView(startIndex);
       startMasterTimer();
+
+      // Check for boot flag - require password on boot if configured
+      const bootFlag=path.join(__dirname,'.boot-flag');
+      if(enablePasswordProtection&&lockoutPassword&&requirePasswordOnBoot&&fs.existsSync(bootFlag)){
+        console.log('[LOCKOUT] Boot detected, requiring password');
+        fs.unlinkSync(bootFlag);
+        showLockoutScreen();
+      }
     },1000);
   }
   
@@ -5923,6 +6060,9 @@ pactl set-source-mute @DEFAULT_SOURCE@ 0
 # Other services
 unclutter -idle 0.1 -root &
 XDG_RUNTIME_DIR=/run/user/$(id -u) xbindkeys &
+
+# Create boot flag for password requirement on boot
+touch /home/kiosk/kiosk-app/.boot-flag
 
 # Start kiosk app AFTER audio is ready
 sleep 2
