@@ -254,8 +254,8 @@ update_electron() {
     local target_version="$2"
     local kiosk_owner="$3"
 
-    log_info "Stopping kiosk service..."
-    sudo systemctl stop kiosk || true
+    log_info "Stopping kiosk display..."
+    sudo systemctl stop lightdm || true
     sleep 2
 
     log_info "Updating Electron to version $target_version..."
@@ -264,21 +264,20 @@ update_electron() {
     sudo -u "$kiosk_owner" sed -i "s/\"electron\": \".*\"/\"electron\": \"^$target_version\"/" "$kiosk_dir/package.json"
 
     # Remove old electron installation
-    if [ -d "$kiosk_dir/node_modules/electron" ]; then
+    if sudo test -d "$kiosk_dir/node_modules/electron" 2>/dev/null; then
         log_info "Removing old Electron installation..."
         sudo -u "$kiosk_owner" rm -rf "$kiosk_dir/node_modules/electron"
     fi
 
     # Install new version
     log_info "Installing Electron $target_version (this may take a few minutes)..."
-    cd "$kiosk_dir"
 
-    if sudo -u "$kiosk_owner" npm install electron@"$target_version" 2>&1 | tee /tmp/electron_install.log; then
+    if sudo -u "$kiosk_owner" bash -c "cd '$kiosk_dir' && npm install electron@'$target_version'" 2>&1 | tee /tmp/electron_install.log; then
         log_success "Electron updated successfully to version $target_version"
 
         # Fix chrome-sandbox permissions
         local sandbox="$kiosk_dir/node_modules/electron/dist/chrome-sandbox"
-        if [ -f "$sandbox" ]; then
+        if sudo test -f "$sandbox" 2>/dev/null; then
             sudo chown root:root "$sandbox"
             sudo chmod 4755 "$sandbox"
             log_success "Fixed chrome-sandbox permissions"
@@ -435,26 +434,26 @@ main() {
         log_success "Electron updated from $CURRENT_VERSION to $NEW_VERSION"
         echo ""
 
-        # Restart kiosk
-        read -p "Restart kiosk service now? (y/n): " -n 1 -r
+        # Restart kiosk display
+        read -p "Restart kiosk display now? (y/n): " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            log_info "Restarting kiosk service..."
-            sudo systemctl start kiosk
+            log_info "Restarting kiosk display..."
+            sudo systemctl start lightdm
             sleep 3
 
-            if systemctl is-active --quiet kiosk; then
-                log_success "Kiosk service started successfully"
+            if systemctl is-active --quiet lightdm; then
+                log_success "Kiosk display started successfully"
             else
-                log_error "Kiosk service failed to start"
-                log_error "Check logs with: sudo journalctl -u kiosk -n 50"
+                log_error "Kiosk display failed to start"
+                log_error "Check logs with: sudo journalctl -u lightdm -n 50"
                 echo ""
                 log_warning "You may need to restore from backup"
                 show_restore_instructions "$BACKUP_DIR"
             fi
         else
-            log_info "Kiosk service not started"
-            log_info "Start manually with: sudo systemctl start kiosk"
+            log_info "Kiosk display not started"
+            log_info "Start manually with: sudo systemctl start lightdm"
         fi
 
         echo ""
@@ -476,14 +475,13 @@ main() {
 
         # Reinstall original version
         log_info "Reinstalling original Electron version..."
-        cd "$KIOSK_DIR"
-        if sudo -u "$KIOSK_OWNER" npm install; then
+        if sudo -u "$KIOSK_OWNER" bash -c "cd '$KIOSK_DIR' && npm install"; then
             log_success "Restored original Electron installation"
 
-            # Restart kiosk
-            log_info "Restarting kiosk service..."
-            sudo systemctl start kiosk
-            log_success "Kiosk service restarted"
+            # Restart kiosk display
+            log_info "Restarting kiosk display..."
+            sudo systemctl start lightdm
+            log_success "Kiosk display restarted"
         else
             log_error "Failed to restore original installation"
             log_error "Manual intervention required"
