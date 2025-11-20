@@ -3979,6 +3979,13 @@ function attachView(i){
   views[i].webContents.focus();
   siteStartTime=Date.now();
 
+  // v0.9.8 FIX: Clear time extension when switching sites (manual or auto-rotation)
+  // Extension is site-specific - when leaving a site, clear its extension
+  if(inactivityExtensionUntil>0){
+    console.log('[ATTACH] ⏰ Clearing time extension - switching to new site');
+    inactivityExtensionUntil=0;
+  }
+
   // v0.9.8: Clear interaction flag when site changes
   // Will be set back to true if user manually swiped here (markActivity called after)
   // Will stay false if auto-rotated (no user interaction yet)
