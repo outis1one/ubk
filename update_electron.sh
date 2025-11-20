@@ -55,7 +55,8 @@ find_kiosk_dir() {
     # Method 1: Check default kiosk user home
     if id "$KIOSK_USER" &>/dev/null; then
         local kiosk_home=$(eval echo ~$KIOSK_USER)
-        if [ -f "$kiosk_home/kiosk-app/main.js" ]; then
+        # Use sudo to check file since /home/kiosk may have restricted permissions
+        if sudo test -f "$kiosk_home/kiosk-app/main.js" 2>/dev/null; then
             DETECTED_DIR="$kiosk_home/kiosk-app"
         fi
     fi
@@ -63,7 +64,8 @@ find_kiosk_dir() {
     # Method 2: Search all /home directories
     if [ -z "$DETECTED_DIR" ]; then
         for user_home in /home/*; do
-            if [ -f "$user_home/kiosk-app/main.js" ]; then
+            # Use sudo to check file in case of restricted permissions
+            if sudo test -f "$user_home/kiosk-app/main.js" 2>/dev/null; then
                 DETECTED_DIR="$user_home/kiosk-app"
                 break
             fi
@@ -74,8 +76,20 @@ find_kiosk_dir() {
     if [ -z "$DETECTED_DIR" ]; then
         if systemctl list-units --all kiosk.service 2>/dev/null | grep -q kiosk.service; then
             local service_dir=$(systemctl show -p WorkingDirectory kiosk.service 2>/dev/null | cut -d= -f2)
-            if [ -n "$service_dir" ] && [ -f "$service_dir/main.js" ]; then
+            if [ -n "$service_dir" ] && sudo test -f "$service_dir/main.js" 2>/dev/null; then
                 DETECTED_DIR="$service_dir"
+            fi
+        fi
+    fi
+
+    # Method 4: Check for running electron process
+    if [ -z "$DETECTED_DIR" ]; then
+        local electron_path=$(ps aux | grep -E "electron.*main.js" | grep -v grep | head -1 | awk '{for(i=11;i<=NF;i++) if($i ~ /^\//) {print $i; exit}}')
+        if [ -n "$electron_path" ]; then
+            # Extract directory from electron path (e.g., /home/kiosk/kiosk-app/node_modules/electron/dist/electron -> /home/kiosk/kiosk-app)
+            local app_dir=$(echo "$electron_path" | sed 's|/node_modules/electron.*||')
+            if [ -n "$app_dir" ] && sudo test -f "$app_dir/main.js" 2>/dev/null; then
+                DETECTED_DIR="$app_dir"
             fi
         fi
     fi
@@ -91,19 +105,19 @@ get_current_electron_version() {
     local kiosk_dir="$1"
     local package_json="$kiosk_dir/package.json"
 
-    if [ ! -f "$package_json" ]; then
+    if ! sudo test -f "$package_json" 2>/dev/null; then
         echo "unknown"
         return 1
     fi
 
-    # Try to get version from package.json
-    local version=$(grep -oP '"electron"\s*:\s*"\^?\K[0-9.]+' "$package_json" 2>/dev/null || echo "")
+    # Try to get version from package.json (use sudo to read)
+    local version=$(sudo grep -oP '"electron"\s*:\s*"\^?\K[0-9.]+' "$package_json" 2>/dev/null || echo "")
 
     if [ -z "$version" ]; then
         # Try to get from installed node_modules
         local electron_pkg="$kiosk_dir/node_modules/electron/package.json"
-        if [ -f "$electron_pkg" ]; then
-            version=$(grep -oP '"version"\s*:\s*"\K[0-9.]+' "$electron_pkg" 2>/dev/null || echo "unknown")
+        if sudo test -f "$electron_pkg" 2>/dev/null; then
+            version=$(sudo grep -oP '"version"\s*:\s*"\K[0-9.]+' "$electron_pkg" 2>/dev/null || echo "unknown")
         else
             version="not installed"
         fi

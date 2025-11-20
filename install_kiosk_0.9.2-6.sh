@@ -8298,8 +8298,8 @@ manual_electron_update() {
     echo "══════════════════════════════════════════════════════════"
     echo ""
 
-    # Check if kiosk directory exists
-    if [ ! -d "$KIOSK_DIR" ]; then
+    # Check if kiosk directory exists (use sudo in case of restricted permissions)
+    if ! sudo test -d "$KIOSK_DIR" 2>/dev/null; then
         log_error "Kiosk directory not found: $KIOSK_DIR"
         pause
         return 1
@@ -8309,19 +8309,19 @@ manual_electron_update() {
     get_current_electron_version_local() {
         local package_json="$KIOSK_DIR/package.json"
 
-        if [ ! -f "$package_json" ]; then
+        if ! sudo test -f "$package_json" 2>/dev/null; then
             echo "unknown"
             return 1
         fi
 
-        # Try to get version from package.json
-        local version=$(grep -oP '"electron"\s*:\s*"\^?\K[0-9.]+' "$package_json" 2>/dev/null || echo "")
+        # Try to get version from package.json (use sudo to read)
+        local version=$(sudo grep -oP '"electron"\s*:\s*"\^?\K[0-9.]+' "$package_json" 2>/dev/null || echo "")
 
         if [ -z "$version" ]; then
             # Try to get from installed node_modules
             local electron_pkg="$KIOSK_DIR/node_modules/electron/package.json"
-            if [ -f "$electron_pkg" ]; then
-                version=$(grep -oP '"version"\s*:\s*"\K[0-9.]+' "$electron_pkg" 2>/dev/null || echo "unknown")
+            if sudo test -f "$electron_pkg" 2>/dev/null; then
+                version=$(sudo grep -oP '"version"\s*:\s*"\K[0-9.]+' "$electron_pkg" 2>/dev/null || echo "unknown")
             else
                 version="not installed"
             fi
