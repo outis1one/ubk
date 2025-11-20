@@ -8317,37 +8317,59 @@ manual_electron_update() {
     echo "Searching for kiosk installation..."
     ACTUAL_KIOSK_DIR=""
 
-    # Try multiple possible locations
-    for dir in "$KIOSK_DIR" "/home/*/kiosk-app" "/home/kiosk/kiosk-app" "/opt/kiosk-app" "$HOME/kiosk-app"; do
-        # Expand wildcards
-        for expanded_dir in $dir; do
-            if [[ -d "$expanded_dir" ]] && [[ -f "$expanded_dir/package.json" ]]; then
-                # Verify it's actually our kiosk by checking for electron dependency
-                if grep -q "electron" "$expanded_dir/package.json" 2>/dev/null; then
-                    ACTUAL_KIOSK_DIR="$expanded_dir"
-                    break 2
+    # Method 1: Check if electron process is running and extract its directory
+    ELECTRON_CWD=$(ps aux | grep "node_modules/electron/dist/electron" | grep -v grep | awk '{for(i=1;i<=NF;i++) if($i ~ /\//) print $i}' | grep "node_modules/electron" | sed 's|/node_modules/electron.*||' | head -1)
+    if [[ -n "$ELECTRON_CWD" ]] && [[ -d "$ELECTRON_CWD" ]] && [[ -f "$ELECTRON_CWD/package.json" ]]; then
+        if grep -q "electron" "$ELECTRON_CWD/package.json" 2>/dev/null; then
+            ACTUAL_KIOSK_DIR="$ELECTRON_CWD"
+            echo "✓ Found running kiosk at: $ACTUAL_KIOSK_DIR"
+        fi
+    fi
+
+    # Method 2: Try standard locations if not found from running process
+    if [[ -z "$ACTUAL_KIOSK_DIR" ]]; then
+        # Use find to search for kiosk-app directories
+        for candidate in $(find /home -maxdepth 3 -type d -name "kiosk-app" 2>/dev/null); do
+            if [[ -f "$candidate/package.json" ]] && grep -q "electron" "$candidate/package.json" 2>/dev/null; then
+                ACTUAL_KIOSK_DIR="$candidate"
+                echo "✓ Found kiosk at: $ACTUAL_KIOSK_DIR"
+                break
+            fi
+        done
+    fi
+
+    # Method 3: Check specific common locations as fallback
+    if [[ -z "$ACTUAL_KIOSK_DIR" ]]; then
+        for dir in "$KIOSK_DIR" "/opt/kiosk-app" "/usr/local/kiosk-app"; do
+            if [[ -d "$dir" ]] && [[ -f "$dir/package.json" ]]; then
+                if grep -q "electron" "$dir/package.json" 2>/dev/null; then
+                    ACTUAL_KIOSK_DIR="$dir"
+                    echo "✓ Found kiosk at: $ACTUAL_KIOSK_DIR"
+                    break
                 fi
             fi
         done
-    done
+    fi
 
     if [[ -z "$ACTUAL_KIOSK_DIR" ]]; then
         log_error "Could not find kiosk installation"
         echo ""
-        echo "Searched locations:"
-        echo "  • $KIOSK_DIR"
-        echo "  • /home/*/kiosk-app"
-        echo "  • /opt/kiosk-app"
+        echo "Tried:"
+        echo "  1. Checked running electron processes"
+        echo "  2. Searched /home for kiosk-app directories"
+        echo "  3. Checked: $KIOSK_DIR, /opt/kiosk-app, /usr/local/kiosk-app"
         echo ""
         echo "The kiosk must have:"
         echo "  • package.json with electron dependency"
-        echo "  • node_modules directory"
+        echo "  • node_modules/electron directory"
+        echo ""
+        echo "If your kiosk is running, try:"
+        echo "  ps aux | grep electron"
         echo ""
         pause
         return 1
     fi
 
-    echo "Found kiosk at: $ACTUAL_KIOSK_DIR"
     echo ""
 
     # Detect current Electron version (multiple methods for reliability)
