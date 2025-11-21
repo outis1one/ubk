@@ -1,11 +1,34 @@
 #!/bin/bash
 ################################################################################
-###   Ubuntu Based Kiosk (UBK) v0.9.5-1          ###
+###   Ubuntu Based Kiosk (UBK) v0.9.5-2          ###
 ################################################################################
+#
+# RELEASE v0.9.5-2 - Settings Persistence & Timing Fixes
+#
+# What's NEW in v0.9.5-2:
+# - CRITICAL FIX: Sites no longer wiped when editing password/pause/OSK settings
+#   * Added load_existing_config() to preserve all settings before save
+#   * Fixed empty URLS/DURS arrays from overwriting sites in config.json
+# - CRITICAL FIX: Password protection now properly saved/persists on reboot
+# - CRITICAL FIX: Sites now properly saved/persist on reboot
+# - FIXED: Time extension now works on correct site (not next rotation site)
+#   * Pause dialog blocks rotation while user is selecting time
+#   * Inactivity prompt blocks rotation while user is responding
+# - FIXED: Pause button now properly blocks rotation for selected duration
+# - FIXED: Manual site timeout popup no longer appears 1 min after extension expires
+#   * Extension expiration now properly resets lastUserInteraction timer
+# - NEW: Cancel/exit option in password and optional features menus
+#   * Menus now ask "Save these changes?" before applying
+#   * Answer "no" to discard changes without affecting config
+# - ENHANCED: Comprehensive settings display on main menu
+#   * Shows all sites with [HOME] marker
+#   * Shows home URL and inactivity timeout
+#   * Shows pause/keyboard button status
+#   * Shows complete password protection configuration
 #
 # RELEASE v0.9.5-1 - Lockout Stay Locked Fix
 #
-# What's NEW in v0.9.5-1:
+# What was in v0.9.5-1:
 # - CRITICAL FIX: Lockout screen now stays locked until password entered
 # - Fixed rotation timer continuing to run during lockout
 # - Added isLockedOut checks to all navigation functions
