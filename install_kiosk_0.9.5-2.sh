@@ -3791,21 +3791,24 @@ console.log('[CONFIG] Pause button:',enablePauseButton);    console.log('[CONFIG
 function markActivity(){
   const now=Date.now();
   const timeSinceLastActivity=now-lastUserInteraction;
-  
+
   if(timeSinceLastActivity>5000){
     console.log('[ACTIVITY] User interaction detected');
   }
-  
+
   lastUserInteraction=now;
   userRecentlyActive=true;
-  
+
   if(promptWindow&&!promptWindow.isDestroyed()){
     console.log('[ACTIVITY] Closing inactivity prompt');
     promptWindow.close();
     promptWindow=null;
   }
-  
-  inactivityExtensionUntil=0;
+
+  // CRITICAL FIX: Don't clear extensions on activity
+  // Extensions should only expire naturally or be explicitly cancelled
+  // If user is active, they're using the current site - extension should remain
+  // inactivityExtensionUntil=0;  // REMOVED - was breaking extensions
 
   // Reset lockout timer on activity
   if(enablePasswordProtection&&lockoutTimeout>0&&!isLockedOut){
