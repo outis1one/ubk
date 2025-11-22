@@ -2,6 +2,50 @@
 
 This is a standalone script for setting up push-to-talk (PTT) intercom functionality for the Ubuntu Based Kiosk using Mumble/Talkkonnect.
 
+## How to Use
+
+### Option 1: Via Main Install Script (Recommended)
+If you've cloned or downloaded the UBK repository, the intercom setup is automatically available:
+
+```bash
+# Run the main UBK installer
+./install_kiosk_0.9.6.sh
+
+# Navigate to: Main Menu → Addons Management (option 2)
+# Then select: talkkonnect/Murmur Intercom (native audio) (option 4)
+```
+
+The main installer will automatically launch `setup_intercom.sh` when you select the intercom option.
+
+### Option 2: Standalone Usage
+You can also run the intercom setup script directly:
+
+```bash
+# Make sure both scripts are in the same directory
+cd /path/to/ubk
+./setup_intercom.sh
+```
+
+**Important:** Both `install_kiosk_0.9.6.sh` and `setup_intercom.sh` must be in the same directory for the integration to work.
+
+## What's Included When You Download the Repository
+
+When you clone or download the UBK repository, you get:
+
+```
+ubk/
+├── install_kiosk_0.9.6.sh      # Main UBK installer (has intercom integration)
+├── setup_intercom.sh           # Standalone intercom setup & management
+├── INTERCOM_README.md          # This file
+└── integrate_intercom.sh       # (Optional) Integration helper/documentation
+```
+
+Both scripts work together:
+- **install_kiosk_0.9.6.sh**: Full UBK installation with integrated intercom support
+- **setup_intercom.sh**: Dedicated intercom setup with its own menu system
+
+You don't need to modify anything - just run either script and they'll find each other automatically.
+
 ## Overview
 
 The intercom system uses:

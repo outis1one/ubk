@@ -321,6 +321,7 @@ set -euo pipefail
 ################################################################################
 
 SCRIPT_VERSION="0.9.6"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIOSK_USER="kiosk"
 BUILD_USER="${SUDO_USER:-$(whoami)}"
 KIOSK_HOME="/home/${KIOSK_USER}"
@@ -7638,139 +7639,35 @@ remove_jitsi_intercom() {
 ################################################################################
 
 addon_talkkonnect_intercom() {
-    clear
-    echo "════════════════════════════════════════════════════════════"
-    echo "   TALKKONNECT/MURMUR INTERCOM                                   "
-    echo "════════════════════════════════════════════════════════════"
-    echo
-    
-    local murmur_installed=false
-    local talkkonnect_installed=false
-    local murmur_running=false
-    local talkkonnect_running=false
-    
-    # Check Murmur server
-    if systemctl list-unit-files | grep -q "mumble-server.service"; then
-        murmur_installed=true
-        if systemctl is-active --quiet mumble-server; then
-            murmur_running=true
-        fi
-    fi
-    
-    # Check talkkonnect client
-    if command -v talkkonnect &>/dev/null || [[ -f "$HOME/go/bin/talkkonnect" ]]; then
-        talkkonnect_installed=true
-        if systemctl is-active --quiet talkkonnect; then
-            talkkonnect_running=true
-        fi
-    fi
-    
-    # Display status
-    if $murmur_installed; then
-        echo "Murmur Server: ✓ Installed"
-        if $murmur_running; then
-            echo "  Status: Running"
-            local server_ip=$(get_ip_address)
-            echo "  Address: $server_ip:64738"
-        else
-            echo "  Status: Stopped"
-        fi
+    # Launch the standalone intercom setup script
+    local intercom_script="$SCRIPT_DIR/setup_intercom.sh"
+
+    if [[ ! -f "$intercom_script" ]]; then
+        clear
+        echo "════════════════════════════════════════════════════════════"
+        echo "   TALKKONNECT/MURMUR INTERCOM                                   "
+        echo "════════════════════════════════════════════════════════════"
         echo
-    fi
-    
-    if $talkkonnect_installed; then
-        echo "talkkonnect Client: ✓ Installed"
-        if $talkkonnect_running; then
-            echo "  Status: Running"
-            if [[ -f /home/$KIOSK_USER/talkkonnect.xml ]]; then
-                local server=$(grep "serveraddress" /home/$KIOSK_USER/talkkonnect.xml 2>/dev/null | sed 's/.*<serveraddress>\(.*\)<\/serveraddress>/\1/' || echo "Unknown")
-                echo "  Server: $server"
-            fi
-        else
-            echo "  Status: Stopped"
-        fi
+        log_error "Intercom setup script not found at: $intercom_script"
         echo
-    fi
-    
-    # Menu options
-    echo "Options:"
-    local menu_num=1
-    
-    if ! $murmur_installed && ! $talkkonnect_installed; then
-        echo "  1. Install Murmur server + talkkonnect (all-in-one)"
-        echo "  2. Install talkkonnect only (connect to existing server)"
-        echo "  0. Return"
+        echo "The standalone intercom script is required but not found."
+        echo "Please ensure setup_intercom.sh is in the same directory as this script."
         echo
-        read -r -p "Choose [0-2]: " choice
-        
-        case "$choice" in
-            1) install_murmur_and_talkkonnect ;;
-            2) install_talkkonnect_only ;;
-            0) return ;;
-        esac
-    else
-        if $murmur_installed; then
-            echo "  $menu_num. $([ $murmur_running = true ] && echo 'Stop' || echo 'Start') Murmur server"
-            local murmur_toggle=$menu_num
-            ((menu_num++))
-            echo "  $menu_num. Reconfigure Murmur server"
-            local murmur_reconfig=$menu_num
-            ((menu_num++))
-            echo "  $menu_num. Uninstall Murmur server"
-            local murmur_uninstall=$menu_num
-            ((menu_num++))
-        else
-            echo "  $menu_num. Install Murmur server"
-            local murmur_install=$menu_num
-            ((menu_num++))
-        fi
-        
-        if $talkkonnect_installed; then
-            echo "  $menu_num. $([ $talkkonnect_running = true ] && echo 'Stop' || echo 'Start') talkkonnect client"
-            local tk_toggle=$menu_num
-            ((menu_num++))
-            echo "  $menu_num. Reconfigure talkkonnect client"
-            local tk_reconfig=$menu_num
-            ((menu_num++))
-            echo "  $menu_num. View talkkonnect logs"
-            local tk_logs=$menu_num
-            ((menu_num++))
-            echo "  $menu_num. Uninstall talkkonnect client"
-            local tk_uninstall=$menu_num
-            ((menu_num++))
-        else
-            echo "  $menu_num. Install talkkonnect client"
-            local tk_install=$menu_num
-            ((menu_num++))
-        fi
-        
-        echo "  0. Return"
+        echo "You can download it from:"
+        echo "  https://github.com/outis1one/ubk"
         echo
-        read -r -p "Choose [0-$((menu_num-1))]: " choice
-        
-        # Handle selection
-        if [[ -n "${murmur_toggle:-}" ]] && [[ "$choice" == "$murmur_toggle" ]]; then
-            toggle_murmur_service
-        elif [[ -n "${murmur_reconfig:-}" ]] && [[ "$choice" == "$murmur_reconfig" ]]; then
-            reconfigure_murmur
-        elif [[ -n "${murmur_uninstall:-}" ]] && [[ "$choice" == "$murmur_uninstall" ]]; then
-            uninstall_murmur
-        elif [[ -n "${murmur_install:-}" ]] && [[ "$choice" == "$murmur_install" ]]; then
-            install_murmur_server
-        elif [[ -n "${tk_toggle:-}" ]] && [[ "$choice" == "$tk_toggle" ]]; then
-            toggle_talkkonnect_service
-        elif [[ -n "${tk_reconfig:-}" ]] && [[ "$choice" == "$tk_reconfig" ]]; then
-            reconfigure_talkkonnect
-        elif [[ -n "${tk_logs:-}" ]] && [[ "$choice" == "$tk_logs" ]]; then
-            view_talkkonnect_logs
-        elif [[ -n "${tk_uninstall:-}" ]] && [[ "$choice" == "$tk_uninstall" ]]; then
-            uninstall_talkkonnect
-        elif [[ -n "${tk_install:-}" ]] && [[ "$choice" == "$tk_install" ]]; then
-            install_talkkonnect_only
-        elif [[ "$choice" == "0" ]]; then
-            return
-        fi
+        read -r -p "Press Enter to continue..."
+        return 1
     fi
+
+    # Make sure it's executable
+    chmod +x "$intercom_script" 2>/dev/null || true
+
+    # Launch the intercom setup (runs in same shell, returns to this menu when done)
+    bash "$intercom_script"
+
+    # Return control to addons menu
+    return $?
 }
 
 install_murmur_server() {
