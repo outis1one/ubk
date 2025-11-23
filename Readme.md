@@ -1,7 +1,7 @@
 ### UBK (Ubuntu Based Kiosk) — Installer README
 
 Built with Claude Sonnet 4/.5 AI assistance
-License: GPL v3 - Keep derivatives open sour
+License: GPL v3 - Keep derivatives open source
 Repository: https://github.com/outis1one/ubk/
 
 ## TARGET SYSTEMS:
