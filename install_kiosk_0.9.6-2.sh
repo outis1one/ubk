@@ -7182,8 +7182,8 @@ addon_bluetooth() {
                 fi
             done
 
-            wait $scan_pid 2>/dev/null
-            bluetoothctl scan off 2>/dev/null
+            wait $scan_pid 2>/dev/null || true
+            bluetoothctl scan off 2>/dev/null || true
 
             echo
             echo
