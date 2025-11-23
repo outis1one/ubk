@@ -69,10 +69,14 @@ check_talkkonnect_status() {
     local installed=false
     local running=false
 
-    # Check if systemd service exists (most reliable indicator)
+    # Check multiple possible installation locations
+    # New installation: /usr/local/bin/talkkonnect and ~/.config/talkkonnect/
+    # Old installation: ~/go/bin/talkkonnect and ~/talkkonnect.xml
     if [[ -f /etc/systemd/system/talkkonnect.service ]] || \
-       command -v talkkonnect &>/dev/null || \
-       [[ -f "/home/$KIOSK_USER/go/bin/talkkonnect" ]]; then
+       [[ -f /usr/local/bin/talkkonnect ]] || \
+       [[ -f "/home/$KIOSK_USER/go/bin/talkkonnect" ]] || \
+       [[ -d "/home/$KIOSK_USER/.config/talkkonnect" ]] || \
+       [[ -f "/home/$KIOSK_USER/talkkonnect.xml" ]]; then
         installed=true
         if systemctl is-active --quiet talkkonnect; then
             running=true
@@ -913,14 +917,54 @@ uninstall_talkkonnect() {
     read -r -p "Uninstall talkkonnect? (yes/no): " confirm
     [[ "$confirm" != "yes" ]] && return
 
-    echo "Uninstalling..."
-    sudo systemctl stop talkkonnect 2>/dev/null || true
-    sudo systemctl disable talkkonnect 2>/dev/null || true
-    sudo rm -f /etc/systemd/system/talkkonnect.service
-    sudo rm -f /home/$KIOSK_USER/talkkonnect.xml
-    sudo rm -f /home/$KIOSK_USER/go/bin/talkkonnect
+    echo "Uninstalling talkkonnect..."
 
-    sudo systemctl daemon-reload
+    # Stop and disable service
+    if systemctl is-active --quiet talkkonnect 2>/dev/null; then
+        echo "[+] Stopping talkkonnect service..."
+        sudo systemctl stop talkkonnect
+    fi
+
+    if systemctl is-enabled --quiet talkkonnect 2>/dev/null; then
+        echo "[+] Disabling talkkonnect service..."
+        sudo systemctl disable talkkonnect
+    fi
+
+    # Remove systemd service file
+    if [[ -f /etc/systemd/system/talkkonnect.service ]]; then
+        echo "[+] Removing service file..."
+        sudo rm -f /etc/systemd/system/talkkonnect.service
+        sudo systemctl daemon-reload
+    fi
+
+    # Remove binaries (both old and new locations)
+    if [[ -f /usr/local/bin/talkkonnect ]]; then
+        echo "[+] Removing binary from /usr/local/bin..."
+        sudo rm -f /usr/local/bin/talkkonnect
+    fi
+
+    if [[ -f "/home/$KIOSK_USER/go/bin/talkkonnect" ]]; then
+        echo "[+] Removing binary from ~/go/bin..."
+        sudo rm -f "/home/$KIOSK_USER/go/bin/talkkonnect"
+    fi
+
+    # Remove config files (both old and new locations)
+    if [[ -d "/home/$KIOSK_USER/.config/talkkonnect" ]]; then
+        echo "[+] Removing config directory ~/.config/talkkonnect..."
+        sudo rm -rf "/home/$KIOSK_USER/.config/talkkonnect"
+    fi
+
+    if [[ -f "/home/$KIOSK_USER/talkkonnect.xml" ]]; then
+        echo "[+] Removing old config file ~/talkkonnect.xml..."
+        sudo rm -f "/home/$KIOSK_USER/talkkonnect.xml"
+    fi
+
+    # Remove source directory if it exists
+    read -r -p "Also remove source directory ~/talkkonnect? (y/n): " remove_source
+    if [[ "$remove_source" =~ ^[Yy]$ ]] && [[ -d "/home/$KIOSK_USER/talkkonnect" ]]; then
+        echo "[+] Removing source directory..."
+        sudo rm -rf "/home/$KIOSK_USER/talkkonnect"
+    fi
 
     log_success "talkkonnect uninstalled"
     pause
