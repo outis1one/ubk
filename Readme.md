@@ -167,13 +167,13 @@ This project bundles or installs several upstream open-source components. Their 
 
 ### Updating the Electron Kiosk App
 
-1. Switch to the kiosk user or app directory.
-2. Pull new code.
-3. Rebuild the Electron application.
-4. Restart kiosk systemd service:
+1.  run the install_kiosk_(version#).sh
+2.  Choose 3. Advanced Feature
+3.  Choose 1. Manual Electron Update
+4.  follow the prompts, agree to the update, copy backup instructions
+5.  Restart kiosk systemd service when prompted
 
-```
-sudo systemctl restart ubk-kiosk.service
+
 ```
 
 ### Checking Service Status
