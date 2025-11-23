@@ -69,7 +69,10 @@ check_talkkonnect_status() {
     local installed=false
     local running=false
 
-    if command -v talkkonnect &>/dev/null || [[ -f "$HOME/go/bin/talkkonnect" ]]; then
+    # Check if systemd service exists (most reliable indicator)
+    if [[ -f /etc/systemd/system/talkkonnect.service ]] || \
+       command -v talkkonnect &>/dev/null || \
+       [[ -f "/home/$KIOSK_USER/go/bin/talkkonnect" ]]; then
         installed=true
         if systemctl is-active --quiet talkkonnect; then
             running=true
@@ -509,16 +512,14 @@ EOFOPUS
         cd cmd/talkkonnect || exit 1
 
         echo 'Compiling with vendored dependencies...'
-        go build -mod=vendor -v -o /home/$KIOSK_USER/talkkonnect-binary . 2>&1 | tail -20
+        go build -mod=vendor -v -o ~/talkkonnect-binary . 2>&1 | tail -20
 
-        if [[ -f /home/$KIOSK_USER/talkkonnect-binary ]]; then
-            chmod +x /home/$KIOSK_USER/talkkonnect-binary
-            echo 'Build successful'
-            exit 0
-        else
+        if [[ ! -f ~/talkkonnect-binary ]]; then
             echo 'Build failed - binary not created'
             exit 1
         fi
+
+        echo 'Build successful'
     "
 
     local build_result=$?
@@ -534,18 +535,32 @@ EOFOPUS
         return 1
     fi
 
-    # Verify and install binary
-    if [[ ! -x "/home/$KIOSK_USER/talkkonnect-binary" ]]; then
-        log_error "Binary not executable after build"
+    # Stop any running talkkonnect before installing
+    echo "Installing binary..."
+    if systemctl is-active --quiet talkkonnect 2>/dev/null; then
+        echo "Stopping existing talkkonnect service..."
+        sudo systemctl stop talkkonnect
+    fi
+
+    # Kill any stray processes
+    if pgrep -x talkkonnect > /dev/null 2>&1; then
+        echo "Killing running talkkonnect processes..."
+        sudo pkill -9 talkkonnect
+        sleep 1
+    fi
+
+    # Now install as kiosk user
+    sudo -u "$KIOSK_USER" bash -c "
+        cp ~/talkkonnect-binary ~/go/bin/talkkonnect
+        chmod +x ~/go/bin/talkkonnect
+        rm ~/talkkonnect-binary
+    "
+
+    if [[ $? -ne 0 ]]; then
+        log_error "Failed to install binary"
         pause
         return 1
     fi
-
-    echo "Installing binary..."
-    sudo cp /home/$KIOSK_USER/talkkonnect-binary /home/$KIOSK_USER/go/bin/talkkonnect
-    sudo chmod +x /home/$KIOSK_USER/go/bin/talkkonnect
-    sudo chown "$KIOSK_USER:$KIOSK_USER" /home/$KIOSK_USER/go/bin/talkkonnect
-    rm -f /home/$KIOSK_USER/talkkonnect-binary
 
     log_success "talkkonnect built successfully"
 
