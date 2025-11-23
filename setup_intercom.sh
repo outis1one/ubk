@@ -69,7 +69,7 @@ check_talkkonnect_status() {
     local installed=false
     local running=false
 
-    if command -v talkkonnect &>/dev/null || [[ -f "$HOME/go/bin/talkkonnect" ]]; then
+    if command -v talkkonnect &>/dev/null || [[ -f "/home/$KIOSK_USER/go/bin/talkkonnect" ]]; then
         installed=true
         if systemctl is-active --quiet talkkonnect; then
             running=true
@@ -517,14 +517,6 @@ EOFOPUS
         fi
 
         echo 'Build successful'
-        echo 'Installing binary...'
-
-        # Install to go/bin
-        cp ~/talkkonnect-binary ~/go/bin/talkkonnect
-        chmod +x ~/go/bin/talkkonnect
-        rm ~/talkkonnect-binary
-
-        echo 'Installation complete'
     "
 
     local build_result=$?
@@ -536,6 +528,33 @@ EOFOPUS
         echo "  1. Check Go version: go version"
         echo "  2. Ensure build tools: sudo apt install build-essential"
         echo "  3. Check logs above for specific errors"
+        pause
+        return 1
+    fi
+
+    # Stop any running talkkonnect before installing
+    echo "Installing binary..."
+    if systemctl is-active --quiet talkkonnect 2>/dev/null; then
+        echo "Stopping existing talkkonnect service..."
+        sudo systemctl stop talkkonnect
+    fi
+
+    # Kill any stray processes
+    if pgrep -x talkkonnect > /dev/null 2>&1; then
+        echo "Killing running talkkonnect processes..."
+        sudo pkill -9 talkkonnect
+        sleep 1
+    fi
+
+    # Now install as kiosk user
+    sudo -u "$KIOSK_USER" bash -c "
+        cp ~/talkkonnect-binary ~/go/bin/talkkonnect
+        chmod +x ~/go/bin/talkkonnect
+        rm ~/talkkonnect-binary
+    "
+
+    if [[ $? -ne 0 ]]; then
+        log_error "Failed to install binary"
         pause
         return 1
     fi
