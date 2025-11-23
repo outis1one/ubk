@@ -6,7 +6,7 @@ Repository: https://github.com/outis1one/ubk/
 
 ## TARGET SYSTEMS:
 - Ubuntu 24.04+ Server (minimal install recommended)
-- Raspberry Pi 4+ (with or without touchscreen)
+- Raspberry Pi 4+ (with or without touchscreen) -- untested
 - Laptops, desktops, all-in-ones, 2-in-1s
 - Touch support optional (works with keyboard/mouse)
 
