@@ -104,55 +104,64 @@ The installer will prompt for required configuration values during setup.
 
 This project bundles or installs several upstream open-source components. Their licenses apply to their respective software. UBK itself does **not** modify these licenses.
 
-Below are SPDX-style license identifiers and project attribution references.
-
 ### Electron
-
 * **License:** MIT
-* **Project:** [https://github.com/electron/electron](https://github.com/electron/electron)
-* **SPDX:** `MIT`
+* **Source:** https://www.electronjs.org
+* **Notice:** Portions of this project use code from Electron under the MIT License. See https://github.com/electron/electron/blob/main/LICENSE for full license text.
 
 ### Chromium
-
-* **License:** BSD-3-Clause, plus multiple third-party components
-* **Project:** [https://www.chromium.org/](https://www.chromium.org/)
-* **SPDX:** `BSD-3-Clause`
+* **License:** BSD-3-Clause
+* **Source:** https://www.chromium.org
+* **Notice:** Portions of this project use code from Chromium under the BSD-3-Clause License. See https://chromium.googlesource.com/chromium/src/+/main/LICENSE for full license text.
 
 ### Node.js
-
 * **License:** MIT
-* **Project:** [https://github.com/nodejs/node](https://github.com/nodejs/node)
-* **SPDX:** `MIT`
+* **Source:** https://nodejs.org
+* **Notice:** Portions of this project use code from Node.js under the MIT License. See https://github.com/nodejs/node/blob/main/LICENSE for full license text.
 
 ### npm Packages
-
-Most npm modules used by the kiosk app are MIT, Apache-2.0, or similar permissive licenses. Check your app’s `package.json` for exact listings.
+* **License:** Varies per package (check individual package LICENSE file)
+* **Source:** https://www.npmjs.com/
+* **Notice:** Portions of this project use code from various npm packages under their respective licenses. See each package’s LICENSE file for full license text.
 
 ### CUPS
-
-* **License:** Apache-2.0 (CUPS 2.2+) with GPL2/LGPL2 exceptions on older versions
-* **Project:** [https://openprinting.github.io/cups/](https://openprinting.github.io/cups/)
-* **SPDX:** `Apache-2.0`
+* **License:** Apache License 2.0
+* **Source:** https://www.cups.org
+* **Notice:** Portions of this project use code from CUPS under the Apache License 2.0. See https://github.com/apple/cups/blob/master/LICENSE for full license text.
 
 ### Squeezelite
+* **License:** GPL-2.0
+* **Source:** https://github.com/ralph-irving/squeezelite
+* **Notice:** Portions of this project use code from Squeezelite under the GPL-2.0 License. See https://github.com/ralph-irving/squeezelite/blob/master/LICENSE for full license text.
 
-* **License:** GPL-3.0-or-later
-* **Project:** [https://github.com/ralph-irving/squeezelite](https://github.com/ralph-irving/squeezelite)
-* **SPDX:** `GPL-3.0-or-later`
+### FFmpeg
+* **License:** LGPL-2.1 or GPL-2.0 (depending on configuration)
+* **Source:** https://ffmpeg.org
+* **Notice:** Portions of this project use code from FFmpeg under LGPL-2.1 or GPL-2.0. See https://ffmpeg.org/legal.html for full license text.
 
-### ffmpeg
+### Unclutter
+* **License:** MIT / Public Domain (depending on fork)
+* **Source:** https://github.com/Airblader/unclutter-xfixes
+* **Notice:** Portions of this project use code from Unclutter under MIT / Public Domain. See https://github.com/Airblader/unclutter-xfixes/blob/master/LICENSE for full license text.
 
-* **License:** LGPL-2.1-or-later / GPL-2.0-or-later depending on build
-* **Project:** [https://ffmpeg.org/](https://ffmpeg.org/)
-* **SPDX:** `LGPL-2.1-or-later` (typical Ubuntu build)
+### Mumble Client
+* **License:** BSD-3-Clause
+* **Source:** https://www.mumble.info
+* **Notice:** Portions of this project use code from Mumble Client under the BSD-3-Clause License. See https://github.com/mumble-voip/mumble/blob/master/LICENSE for full license text.
 
-### unclutter
+### Murmur Server
+* **License:** BSD-3-Clause
+* **Source:** https://www.mumble.info
+* **Notice:** Portions of this project use code from Murmur Server under the BSD-3-Clause License. See https://github.com/mumble-voip/mumble/blob/master/LICENSE for full license text.
 
-* **License:** Public Domain / MIT (depending on fork)
-* **Project:** [https://github.com/Airblader/unclutter-xfixes](https://github.com/Airblader/unclutter-xfixes)
-* **SPDX:** `MIT`
+### TalkKonnect
+* **License:** Mozilla Public License 2.0 (MPL 2.0)
+* **Source:** https://github.com/talkkonnect/talkkonnect
+* **Notice:** Portions of this project use code from TalkKonnect under the MPL 2.0. You can obtain a copy of the MPL 2.0 at https://www.mozilla.org/en-US/MPL/2.0/
+
 
 ---
+
 
 ## Maintenance Guide
 
