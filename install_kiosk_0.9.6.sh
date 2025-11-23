@@ -331,13 +331,6 @@ LOCKOUT_ACTIVE_START=""
 LOCKOUT_ACTIVE_END=""
 REQUIRE_PASSWORD_ON_BOOT="false"
 
-# INTERCOM SETTINGS
-ENABLE_INTERCOM="false"
-INTERCOM_NAME="Kiosk"
-INTERCOM_PTT_KEY="1"
-INTERCOM_LOCK_MODE="1"
-INTERCOM_RESPONSE_MODE="1"
-
 ################################################################################
 ### SECTION 2: HELPER/UTILITY FUNCTIONS  
 ################################################################################
@@ -765,19 +758,7 @@ show_addon_status() {
         fi
     fi
 
-    # Jitsi Intercom - FAST CHECK
-    if sudo -u "$KIOSK_USER" test -f "$CONFIG_PATH" 2>/dev/null; then
-        if sudo -u "$KIOSK_USER" grep -q "meet.jit.si" "$CONFIG_PATH" 2>/dev/null; then
-            any_addon=true
-            echo "Jitsi Intercom: ✓ Configured"
-            
-            if [[ -f /etc/systemd/system/jitsi-ptt.service ]]; then
-                echo "  PTT: ✓ Installed (Spacebar)"
-            fi
-        fi
-    fi
-  
-    # talkkonnect/Murmur Intercom - FAST CHECK
+    # Mumble/talkkonnect Intercom - FAST CHECK
     local murmur_installed=false
     local talkkonnect_installed=false
     
@@ -3521,9 +3502,6 @@ save_config() {
     local boot_password_json="false"
     [[ "$REQUIRE_PASSWORD_ON_BOOT" == "true" ]] && boot_password_json="true"
 
-    local intercom_json="false"
-    [[ "$ENABLE_INTERCOM" == "true" ]] && intercom_json="true"
-
     jq -n \
       --arg unit "s" \
       --argjson autoswitch "$auto_json" \
@@ -3542,12 +3520,7 @@ save_config() {
       --arg lockoutActiveStart "${LOCKOUT_ACTIVE_START:-}" \
       --arg lockoutActiveEnd "${LOCKOUT_ACTIVE_END:-}" \
       --argjson requirePasswordOnBoot "$boot_password_json" \
-      --argjson enableIntercom "$intercom_json" \
-      --arg intercomName "${INTERCOM_NAME:-Kiosk}" \
-      --argjson intercomPTTKey "${INTERCOM_PTT_KEY:-1}" \
-      --argjson intercomLockMode "${INTERCOM_LOCK_MODE:-1}" \
-      --argjson intercomResponseMode "${INTERCOM_RESPONSE_MODE:-1}" \
-      '{unit:$unit,autoswitch:$autoswitch,enableTouch:$enableTouch,dualSwipe:$dualSwipe,swipeMode:$swipeMode,allowNavigation:$allowNavigation,homeTabIndex:$homeTabIndex,inactivityTimeout:$inactivityTimeout,enablePauseButton:$enablePauseButton,enableKeyboardButton:$enableKeyboardButton,enablePasswordProtection:$enablePasswordProtection,lockoutPassword:$lockoutPassword,lockoutTimeout:$lockoutTimeout,lockoutAtTime:$lockoutAtTime,lockoutActiveStart:$lockoutActiveStart,lockoutActiveEnd:$lockoutActiveEnd,requirePasswordOnBoot:$requirePasswordOnBoot,enableIntercom:$enableIntercom,intercomName:$intercomName,intercomPTTKey:$intercomPTTKey,intercomLockMode:$intercomLockMode,intercomResponseMode:$intercomResponseMode,tabs:[]}' > "$tmp"
+      '{unit:$unit,autoswitch:$autoswitch,enableTouch:$enableTouch,dualSwipe:$dualSwipe,swipeMode:$swipeMode,allowNavigation:$allowNavigation,homeTabIndex:$homeTabIndex,inactivityTimeout:$inactivityTimeout,enablePauseButton:$enablePauseButton,enableKeyboardButton:$enableKeyboardButton,enablePasswordProtection:$enablePasswordProtection,lockoutPassword:$lockoutPassword,lockoutTimeout:$lockoutTimeout,lockoutAtTime:$lockoutAtTime,lockoutActiveStart:$lockoutActiveStart,lockoutActiveEnd:$lockoutActiveEnd,requirePasswordOnBoot:$requirePasswordOnBoot,tabs:[]}' > "$tmp"
     
     if [[ ${#URLS[@]} -gt 0 ]]; then
         for idx in "${!URLS[@]}"; do
@@ -3922,21 +3895,6 @@ let lockoutActivityTime=Date.now();
 let requirePasswordAfterDisplay=false;
 let lastScheduledLockCheck=0;
 
-// Intercom state
-let enableIntercom=false;
-let intercomName='Kiosk';
-let intercomPTTKey=1;
-let intercomLockMode=1;
-let intercomResponseMode=1;
-let intercomServer=null;
-let intercomDiscovery=null;
-let intercomPeers=new Map(); // peerId -> {ws, name, type:'kiosk'|'phone', lastSeen}
-let intercomLastCaller=null; // {peerId, name, timestamp}
-let intercomSelectorWindow=null;
-let intercomPTTPressed=false;
-let intercomPTTHoldStart=0;
-const INTERCOM_CONVERSATION_TIMEOUT=60000; // 60 seconds
-const INTERCOM_PTT_HOLD_THRESHOLD=1000; // 1 second hold to show selector
 
 function loadConfig(){
   try{
@@ -3961,27 +3919,17 @@ function loadConfig(){
     lockoutActiveEnd=config.lockoutActiveEnd||"";
     requirePasswordOnBoot=(config.requirePasswordOnBoot===true);
 
-    enableIntercom=(config.enableIntercom===true);
-    intercomName=config.intercomName||'Kiosk';
-    intercomPTTKey=config.intercomPTTKey||1;
-    intercomLockMode=config.intercomLockMode||1;
-    intercomResponseMode=config.intercomResponseMode||1;
-
     console.log('[CONFIG] ═══════════════════════════');
     console.log('[CONFIG] Home tab index:',homeTabIndex);
     console.log('[CONFIG] Inactivity timeout:',inactivityTimeout/1000,'seconds');
     console.log('[CONFIG] Navigation:',allowNavigation);
-console.log('[CONFIG] Pause button:',enablePauseButton);    console.log('[CONFIG] Keyboard button:',enableKeyboardButton);    console.log('[CONFIG] Password protection:',enablePasswordProtection);    console.log('[CONFIG] Lockout timeout:',lockoutTimeout/60000,'minutes');
+    console.log('[CONFIG] Pause button:',enablePauseButton);
+    console.log('[CONFIG] Keyboard button:',enableKeyboardButton);
+    console.log('[CONFIG] Password protection:',enablePasswordProtection);
+    console.log('[CONFIG] Lockout timeout:',lockoutTimeout/60000,'minutes');
     if(lockoutAtTime)console.log('[CONFIG] Lock at time:',lockoutAtTime);
     if(lockoutActiveStart&&lockoutActiveEnd)console.log('[CONFIG] Active hours:',lockoutActiveStart,'-',lockoutActiveEnd);
     console.log('[CONFIG] Require password on boot:',requirePasswordOnBoot);
-    console.log('[CONFIG] Intercom:',enableIntercom);
-    if(enableIntercom){
-      console.log('[CONFIG]   Name:',intercomName);
-      console.log('[CONFIG]   PTT Key:',intercomPTTKey);
-      console.log('[CONFIG]   Lock Mode:',intercomLockMode);
-      console.log('[CONFIG]   Response Mode:',intercomResponseMode);
-    }
     console.log('[CONFIG] Sites:',config.tabs?.length||0);
     console.log('[CONFIG] ═══════════════════════════');
     
@@ -10160,23 +10108,21 @@ addons_menu() {
         echo "Available Addons:"
         echo "  1. LMS Server / Squeezelite Player"
         echo "  2. CUPS Printing"
-        echo "  3. Jitsi Intercom (web-based)"
-        echo "  4. talkkonnect/Murmur Intercom (native audio)"
-        echo "  5. On-Screen Keyboard"
-        echo "  6. Remote Access (VNC/VPN)"
-        echo "  7. Bluetooth Audio"
+        echo "  3. Mumble/Talkkonnect Intercom"
+        echo "  4. On-Screen Keyboard"
+        echo "  5. Remote Access (VNC/VPN)"
+        echo "  6. Bluetooth Audio"
         echo "  0. Return"
         echo
-        read -r -p "Choose [0-7]: " choice
+        read -r -p "Choose [0-6]: " choice
 
         case "$choice" in
             1) addon_lms_squeezelite ;;
             2) addon_cups ;;
-            3) addon_jitsi_intercom ;;
-            4) addon_talkkonnect_intercom ;;
-            5) addon_onscreen_keyboard ;;
-            6) remote_access_menu ;;
-            7) addon_bluetooth ;;
+            3) addon_talkkonnect_intercom ;;
+            4) addon_onscreen_keyboard ;;
+            5) remote_access_menu ;;
+            6) addon_bluetooth ;;
             0) return ;;
         esac
     done
