@@ -434,20 +434,38 @@ echo "======================================================================="
 echo "[+] CREATING CONFIGURATION"
 echo "======================================================================="
 
-CONFIG_DIR="$TARGET_HOME/.config/talkkonnect"
-mkdir -p "$CONFIG_DIR"
+# Verify target user's home directory exists
+if [ ! -d "$TARGET_HOME" ]; then
+    echo "[!] Error: Home directory for user '$TARGET_USER' does not exist: $TARGET_HOME"
+    echo "[!] Please ensure the user account is properly set up with a home directory"
+    echo "[!] You may need to run: sudo mkhomedir_helper $TARGET_USER"
+    exit 1
+fi
 
-cat > "$CONFIG_DIR/talkkonnect.xml" << 'EOFXML'
+CONFIG_DIR="$TARGET_HOME/.config/talkkonnect"
+
+# Create config directory with appropriate permissions
+if [ "$TARGET_USER" != "$USER" ]; then
+    # Need to use sudo to create directory in another user's home
+    sudo -u "$TARGET_USER" mkdir -p "$CONFIG_DIR"
+    echo "[+] Created config directory as user: $TARGET_USER"
+else
+    mkdir -p "$CONFIG_DIR"
+    echo "[+] Created config directory"
+fi
+
+# Create config file (use tee with sudo to handle permissions)
+sudo tee "$CONFIG_DIR/talkkonnect.xml" > /dev/null << 'EOFXML'
 <?xml version="1.0" encoding="UTF-8"?>
 <document type="talkkonnect/xml">
   <global>
     <software>
-      <settings outputdevice="default" 
-                logfilenameandpath="/home/user/.config/talkkonnect/talkkonnect.log" 
-                logging="both" 
-                daemonize="false" 
-                cancelconnect="false" 
-                simplexwithvox="false" 
+      <settings outputdevice="default"
+                logfilenameandpath="/home/user/.config/talkkonnect/talkkonnect.log"
+                logging="both"
+                daemonize="false"
+                cancelconnect="false"
+                simplexwithvox="false"
                 nextserverindex="0"/>
       <autoprovisioning enabled="false"/>
     </software>
@@ -484,17 +502,17 @@ cat > "$CONFIG_DIR/talkkonnect.xml" << 'EOFXML'
 
   <audio>
     <input>
-      <settings enabled="true" 
-                device="default" 
-                samplerate="48000" 
-                channels="1" 
-                codec="opus" 
+      <settings enabled="true"
+                device="default"
+                samplerate="48000"
+                channels="1"
+                codec="opus"
                 framespersecond="50"/>
     </input>
     <output>
-      <settings enabled="true" 
-                device="default" 
-                samplerate="48000" 
+      <settings enabled="true"
+                device="default"
+                samplerate="48000"
                 channels="1"/>
     </output>
   </audio>
@@ -504,13 +522,13 @@ cat > "$CONFIG_DIR/talkkonnect.xml" << 'EOFXML'
   </ptt>
 
   <voiceactivity enabled="true">
-    <settings threshold="0.3" 
+    <settings threshold="0.3"
               holdtimems="1000"
               holdtimeoutms="2000"/>
   </voiceactivity>
 
   <sounds enabled="false"/>
-  
+
   <txtts enabled="false"/>
 
   <smtp enabled="false"/>
@@ -522,14 +540,14 @@ cat > "$CONFIG_DIR/talkkonnect.xml" << 'EOFXML'
 </document>
 EOFXML
 
-# Update the log path to use actual username
-sed -i "s|/home/user/|$TARGET_HOME/|g" "$CONFIG_DIR/talkkonnect.xml"
+# Update the log path to use actual username (needs sudo since file was created with tee)
+sudo sed -i "s|/home/user/|$TARGET_HOME/|g" "$CONFIG_DIR/talkkonnect.xml"
 
-# Set proper ownership if running as a different user
-if [ "$TARGET_USER" != "$USER" ]; then
-    sudo chown -R "$TARGET_USER:$TARGET_USER" "$CONFIG_DIR"
-    echo "[+] Set ownership of config directory to $TARGET_USER"
-fi
+# Set proper ownership - always needed since we used sudo tee
+sudo chown -R "$TARGET_USER:$TARGET_USER" "$CONFIG_DIR"
+sudo chmod 755 "$CONFIG_DIR"
+sudo chmod 644 "$CONFIG_DIR/talkkonnect.xml"
+echo "[+] Set ownership of config directory to $TARGET_USER"
 
 echo "[+] Created configuration file: $CONFIG_DIR/talkkonnect.xml"
 
