@@ -1,11 +1,25 @@
 #!/bin/bash
 ################################################################################
-###   Ubuntu Based Kiosk (UBK) v0.9.6-1          ###
+###   Ubuntu Based Kiosk (UBK) v0.9.6-2          ###
 ################################################################################
+#
+# RELEASE v0.9.6-2 - Talkkonnect Terminal Fix
+#
+# What's NEW in v0.9.6-2:
+# - CRITICAL FIX: Talkkonnect systemd service terminal initialization error
+#   * ISSUE: talkkonnect service fails with "Cannot Initialize Terminal" error
+#     Error logs show: "alert: Cannot Initialize Terminal" followed by abnormal termination
+#   * ROOT CAUSE: talkkonnect uses termbox-go for terminal UI, which requires a TTY
+#     Systemd services don't provide a TTY by default, causing initialization failure
+#   * FIX: Added two changes to talkkonnect systemd service:
+#     - Environment="TERM=dumb" tells terminal library to use minimal mode
+#     - StandardInput=null explicitly prevents terminal initialization attempts
+#   * RESULT: talkkonnect now runs successfully as a headless systemd service
+# - All features from v0.9.6-1 included
 #
 # RELEASE v0.9.6-1 - Bluetooth Edition (No WebRTC/Jitsi)
 #
-# What's NEW in v0.9.6-1:
+# What was in v0.9.6-1:
 # - NEW: Bluetooth audio support (A2DP sink/source)
 #   * Pair bluetooth speakers, headsets, and microphones
 #   * Auto-reconnect to known devices
