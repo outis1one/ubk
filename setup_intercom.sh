@@ -206,6 +206,8 @@ install_talkkonnect_with_config() {
     echo "   INSTALLING TALKKONNECT CLIENT"
     echo "═══════════════════════════════════════════════════════════════"
     echo
+    echo "Using improved talkkonnect installation method..."
+    echo
 
     echo "[1/4] Installing Go..."
     if ! command -v go &>/dev/null; then
