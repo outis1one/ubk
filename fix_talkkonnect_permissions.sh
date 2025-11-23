@@ -84,25 +84,78 @@ echo "Current permissions:"
 ls -la "$CONFIG_DIR"
 echo ""
 
-# Check systemd service if it exists
+# Check and fix systemd service if it exists
 if [ -f /etc/systemd/system/talkkonnect.service ]; then
     echo "[+] Checking systemd service configuration..."
     SERVICE_USER=$(grep "^User=" /etc/systemd/system/talkkonnect.service | cut -d= -f2)
     SERVICE_CONFIG=$(grep "^ExecStart=" /etc/systemd/system/talkkonnect.service | grep -o '\-config [^ ]*' | cut -d' ' -f2)
 
-    echo "    Service runs as: $SERVICE_USER"
-    echo "    Config path: $SERVICE_CONFIG"
+    echo "    Current service user: $SERVICE_USER"
+    echo "    Current config path: $SERVICE_CONFIG"
+    echo ""
+
+    NEED_SERVICE_UPDATE=false
 
     if [ "$SERVICE_USER" != "$TARGET_USER" ]; then
-        echo ""
-        echo "[!] WARNING: Service is configured to run as '$SERVICE_USER' but you selected '$TARGET_USER'"
-        echo "[!] Update /etc/systemd/system/talkkonnect.service to use the correct user"
+        echo "    ⚠️  Service user needs to be changed from '$SERVICE_USER' to '$TARGET_USER'"
+        NEED_SERVICE_UPDATE=true
     fi
 
     if [ "$SERVICE_CONFIG" != "$CONFIG_DIR/talkkonnect.xml" ]; then
+        echo "    ⚠️  Config path needs to be updated to: $CONFIG_DIR/talkkonnect.xml"
+        NEED_SERVICE_UPDATE=true
+    fi
+
+    if [ "$NEED_SERVICE_UPDATE" = true ]; then
         echo ""
-        echo "[!] WARNING: Service config path doesn't match!"
-        echo "[!] Update /etc/systemd/system/talkkonnect.service to use: $CONFIG_DIR/talkkonnect.xml"
+        read -p "Update systemd service file? [Y/n]: " UPDATE_SERVICE
+        UPDATE_SERVICE=${UPDATE_SERVICE:-Y}
+
+        if [[ "$UPDATE_SERVICE" =~ ^[Yy] ]]; then
+            echo "[+] Updating systemd service..."
+
+            # Get target user's UID
+            TARGET_UID=$(id -u "$TARGET_USER")
+
+            # Create updated service file
+            sudo tee /etc/systemd/system/talkkonnect.service > /dev/null <<EOFSVC
+[Unit]
+Description=TalkKonnect Headless Mumble Transceiver
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=$TARGET_USER
+Group=$TARGET_USER
+WorkingDirectory=$TARGET_HOME
+ExecStart=/usr/local/bin/talkkonnect -config $CONFIG_DIR/talkkonnect.xml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+Environment="XDG_RUNTIME_DIR=/run/user/$TARGET_UID"
+
+[Install]
+WantedBy=multi-user.target
+EOFSVC
+
+            echo "[+] Service file updated!"
+            echo "[+] Reloading systemd..."
+            sudo systemctl daemon-reload
+
+            # Stop service if running
+            if systemctl is-active --quiet talkkonnect 2>/dev/null; then
+                echo "[+] Stopping existing service..."
+                sudo systemctl stop talkkonnect
+            fi
+
+            echo "[+] Service is ready to start with new configuration"
+        else
+            echo "[!] Skipped service update - you'll need to update it manually"
+        fi
+    else
+        echo "    ✓ Service configuration is correct"
     fi
 fi
 
