@@ -1,21 +1,21 @@
-UBK (Ubuntu Based Kiosk) — Installer README
+### UBK (Ubuntu Based Kiosk) — Installer README
 
- Built with Claude Sonnet 4/.5 AI assistance
+Built with Claude Sonnet 4/.5 AI assistance
 License: GPL v3 - Keep derivatives open sour
 Repository: https://github.com/outis1one/ubk/
 
-TARGET SYSTEMS:
+## TARGET SYSTEMS:
 - Ubuntu 24.04+ Server (minimal install recommended)
 - Raspberry Pi 4+ (with or without touchscreen)
 - Laptops, desktops, all-in-ones, 2-in-1s
 - Touch support optional (works with keyboard/mouse)
 
-SECURITY NOTICE:
+# SECURITY NOTICE:
 This is NOT suitable for secure locations or public kiosks.
 Do NOT use as a replacement for hardened kiosk solutions.
 Use entirely at your own risk.
 
-PURPOSE:
+# PURPOSE:
 Home/office kiosk for reusing old hardware, displaying:
 - Self-hosted services (Immich, MagicMirror2, Home Assistant)
 - Web dashboards, digital signage
@@ -23,7 +23,6 @@ Home/office kiosk for reusing old hardware, displaying:
 - Any web-based content
 
 ## Overview
-
 UBK is a full kiosk environment built on Ubuntu, designed for locked‑down, single‑purpose deployments. This installer (`install_kiosk_0.9.7.sh`) automates setup of the entire system, including:
 
 * Electron-based kiosk application
@@ -37,7 +36,14 @@ UBK is a full kiosk environment built on Ubuntu, designed for locked‑down, sin
 
 The script is intended for fresh installations and can fully provision a kiosk from a clean Ubuntu machine.
 
----
+## Functionality
+- single or multiple sites, with auto rotation, and manual sites not in rotation
+- ability to pause a rotational site, auto return to home popup for manual sites
+- password protection
+- Squeezelite player
+- Cups printing
+- touch screen controls (two finger swiping between sites, toggable on screen keyboard and pause site)
+
 
 ## Quick Install
 
@@ -225,7 +231,7 @@ UBK aggregates open-source software governed by their respective licenses. The a
 
 ## Project Status
 
-This installer is part of an evolving kiosk system. Future versions may include additional lockdown measures, network watchdogs, or health monitoring.
+This installer is part of an evolving kiosk system. Future versions may include intercom functionality, a web base gui configuration screen, all in one iso.
 
 ---
 
