@@ -1,4 +1,26 @@
-# UBK (Ubuntu Based Kiosk) — Installer README
+UBK (Ubuntu Based Kiosk) — Installer README
+
+ Built with Claude Sonnet 4/.5 AI assistance
+License: GPL v3 - Keep derivatives open sour
+Repository: https://github.com/outis1one/ubk/
+
+TARGET SYSTEMS:
+- Ubuntu 24.04+ Server (minimal install recommended)
+- Raspberry Pi 4+ (with or without touchscreen)
+- Laptops, desktops, all-in-ones, 2-in-1s
+- Touch support optional (works with keyboard/mouse)
+
+SECURITY NOTICE:
+This is NOT suitable for secure locations or public kiosks.
+Do NOT use as a replacement for hardened kiosk solutions.
+Use entirely at your own risk.
+
+PURPOSE:
+Home/office kiosk for reusing old hardware, displaying:
+- Self-hosted services (Immich, MagicMirror2, Home Assistant)
+- Web dashboards, digital signage
+- Photo slideshows, family calendars
+- Any web-based content
 
 ## Overview
 
@@ -20,6 +42,7 @@ The script is intended for fresh installations and can fully provision a kiosk f
 ## Quick Install
 
 ```
+install ubuntu 24.04 server, config wifi if no ethernet is available and enable ssh
 sudo chmod +x install_kiosk_0.9.7.sh
 sudo ./install_kiosk_0.9.7.sh
 ```
