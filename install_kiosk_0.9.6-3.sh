@@ -3491,7 +3491,27 @@ save_config() {
       --arg lockoutActiveStart "${LOCKOUT_ACTIVE_START:-}" \
       --arg lockoutActiveEnd "${LOCKOUT_ACTIVE_END:-}" \
       --argjson requirePasswordOnBoot "$boot_password_json" \
-    
+      '{
+        unit: $unit,
+        autoswitch: $autoswitch,
+        enableTouch: $enableTouch,
+        dualSwipe: $dualSwipe,
+        swipeMode: $swipeMode,
+        allowNavigation: $allowNavigation,
+        homeTabIndex: $homeTabIndex,
+        inactivityTimeout: $inactivityTimeout,
+        enablePauseButton: $enablePauseButton,
+        enableKeyboardButton: $enableKeyboardButton,
+        enablePasswordProtection: $enablePasswordProtection,
+        lockoutPassword: $lockoutPassword,
+        lockoutTimeout: $lockoutTimeout,
+        lockoutAtTime: $lockoutAtTime,
+        lockoutActiveStart: $lockoutActiveStart,
+        lockoutActiveEnd: $lockoutActiveEnd,
+        requirePasswordOnBoot: $requirePasswordOnBoot,
+        tabs: []
+      }' > "$tmp"
+
     if [[ ${#URLS[@]} -gt 0 ]]; then
         for idx in "${!URLS[@]}"; do
             local url="${URLS[$idx]:-}"
