@@ -3,10 +3,7 @@
 ###   Ubuntu Based Kiosk (UBK) v0.9.7         ###
 ################################################################################
 #
-# RELEASE v0.9.7 - Site-Specific Extension Fix
-#
-
-
+# RELEASE v0.9.7 - phase one complete
 #
 # Built with Claude Sonnet 4/.5 AI assistance
 # License: GPL v3 - Keep derivatives open sour
@@ -432,7 +429,7 @@ show_system_status() {
 }
 
 show_addon_status() {
-    echo " ╔══ INSTALLED ADDONS ══╗"
+    echo " ═══ INSTALLED ADDONS ═══"
     echo
     
     local any_addon=false
@@ -989,6 +986,83 @@ configure_password_protection() {
         log_info "Changes discarded"
         return 1
     fi
+}
+
+configure_hidden_site_pin() {
+    echo
+    echo " ═══ HIDDEN SITE PIN ═══"
+    echo
+    echo "The PIN protects access to hidden sites (duration: -1)"
+    echo "Hidden sites can be accessed via:"
+    echo "  • F10 key"
+    echo "  • 3-finger UP swipe"
+    echo
+    
+    local pin_file="$KIOSK_DIR/.jitsi-pin"
+    local current_pin=""
+    
+    if sudo -u "$KIOSK_USER" test -f "$pin_file" 2>/dev/null; then
+        current_pin=$(sudo -u "$KIOSK_USER" cat "$pin_file" 2>/dev/null)
+        if [[ "$current_pin" == "NOPIN" ]]; then
+            echo "Current: No PIN (hidden sites disabled)"
+        else
+            echo "Current: PIN is set (${#current_pin} digits)"
+        fi
+    else
+        echo "Current: Not configured (default: 1234)"
+    fi
+    
+    echo
+    echo "Options:"
+    echo "  1. Set new PIN (4-8 digits)"
+    echo "  2. Disable PIN (allow access without PIN)"
+    echo "  3. Reset to default (1234)"
+    echo "  0. Cancel"
+    echo
+    read -r -p "Choose [0-3]: " pin_choice
+    
+    case "$pin_choice" in
+        1)
+            echo
+            while true; do
+                read -r -p "Enter new PIN (4-8 digits): " new_pin
+                
+                if [[ ! "$new_pin" =~ ^[0-9]{4,8}$ ]]; then
+                    echo "❌ PIN must be 4-8 digits"
+                    continue
+                fi
+                
+                read -r -p "Confirm PIN: " confirm_pin
+                
+                if [[ "$new_pin" == "$confirm_pin" ]]; then
+                    echo "$new_pin" | sudo -u "$KIOSK_USER" tee "$pin_file" > /dev/null
+                    sudo -u "$KIOSK_USER" chmod 600 "$pin_file"
+                    log_success "PIN updated"
+                    break
+                else
+                    echo "❌ PINs don't match, try again"
+                fi
+            done
+            ;;
+        2)
+            echo "NOPIN" | sudo -u "$KIOSK_USER" tee "$pin_file" > /dev/null
+            sudo -u "$KIOSK_USER" chmod 600 "$pin_file"
+            log_success "PIN disabled - hidden sites accessible without PIN"
+            ;;
+        3)
+            echo "1234" | sudo -u "$KIOSK_USER" tee "$pin_file" > /dev/null
+            sudo -u "$KIOSK_USER" chmod 600 "$pin_file"
+            log_success "PIN reset to default (1234)"
+            ;;
+        0)
+            log_info "Cancelled"
+            return
+            ;;
+    esac
+    
+    echo
+    echo "ℹ️  Restart kiosk for changes to take effect"
+    pause
 }
 
 configure_sites() {
@@ -3582,16 +3656,19 @@ function loadConfig(){
     lockoutActiveEnd=config.lockoutActiveEnd||"";
     requirePasswordOnBoot=(config.requirePasswordOnBoot===true);
 
-    console.log('[CONFIG] ═══════════════════════════');
+    console.log('[CONFIG] ═════════════════════════════════');
     console.log('[CONFIG] Home tab index:',homeTabIndex);
     console.log('[CONFIG] Inactivity timeout:',inactivityTimeout/1000,'seconds');
     console.log('[CONFIG] Navigation:',allowNavigation);
-console.log('[CONFIG] Pause button:',enablePauseButton);    console.log('[CONFIG] Keyboard button:',enableKeyboardButton);    console.log('[CONFIG] Password protection:',enablePasswordProtection);    console.log('[CONFIG] Lockout timeout:',lockoutTimeout/60000,'minutes');
+    console.log('[CONFIG] Pause button:',enablePauseButton);
+    console.log('[CONFIG] Keyboard button:',enableKeyboardButton);
+    console.log('[CONFIG] Password protection:',enablePasswordProtection);
+    console.log('[CONFIG] Lockout timeout:',lockoutTimeout/60000,'minutes');
     if(lockoutAtTime)console.log('[CONFIG] Lock at time:',lockoutAtTime);
     if(lockoutActiveStart&&lockoutActiveEnd)console.log('[CONFIG] Active hours:',lockoutActiveStart,'-',lockoutActiveEnd);
     console.log('[CONFIG] Require password on boot:',requirePasswordOnBoot);
     console.log('[CONFIG] Sites:',config.tabs?.length||0);
-    console.log('[CONFIG] ═══════════════════════════');
+    console.log('[CONFIG] ╚═══════════════════════════════╝');
     
     return config.tabs||[];
   }catch(e){
@@ -3616,18 +3693,6 @@ function markActivity(){
     promptWindow.close();
     promptWindow=null;
   }
-
-  // CRITICAL FIX: Don't clear extensions on activity
-  // Extensions should only expire naturally or be explicitly cancelled
-  // If user is active, they're using the current site - extension should remain
-  // inactivityExtensionUntil=0;  // REMOVED - was breaking extensions
-
-  // CRITICAL: Do NOT reset lockout timer on activity
-  // Lockout timer should only reset when:
-  // 1. User unlocks the screen (in unlockScreen function)
-  // 2. User selects a time extension (in showPauseDialog/showInactivityPrompt)
-  // If we reset it here, ANY activity (mouse move, click, etc.) prevents lockout
-  // REMOVED: lockoutActivityTime reset - was preventing inactivity lockout from ever triggering
 }
 
 function markKeyboardActivity(){
@@ -3769,51 +3834,43 @@ function unlockScreen(){
     lockoutWindow=null;
   }
 
-  // Restore current view using proper method
-  // For boot unlock, always use attachView for regular views (safe path)
+  // Restore current view
   if(showingHidden&&hiddenViews[currentHiddenIndex]){
     try{
       const[w,h]=mainWindow.getContentSize();
-      // Ensure view is added to window before setting as top
       mainWindow.addBrowserView(hiddenViews[currentHiddenIndex]);
       mainWindow.setTopBrowserView(hiddenViews[currentHiddenIndex]);
       hiddenViews[currentHiddenIndex].setBounds({x:0,y:0,width:w,height:h});
     }catch(e){
       console.error('[LOCKOUT] Error restoring hidden view:',e);
-      // Fallback to regular views
       if(views.length>0){
         showingHidden=false;
         attachView(0);
       }
     }
   }else if(views.length>0){
-    // Use valid index or default to 0
     const idx=(currentIndex>=0&&currentIndex<views.length)?currentIndex:0;
     attachView(idx);
   }
 
-  // Start master timer if not already running (handles boot password case)
   if(!masterTimer){
     startMasterTimer();
   }
 
-  // Reset activity time
   lockoutActivityTime=Date.now();
 }
 
-// Helper: Check if current time is within active hours
 function isWithinActiveHours(){
-  if(!lockoutActiveStart||!lockoutActiveEnd)return true; // No restriction
+  if(!lockoutActiveStart||!lockoutActiveEnd)return true;
 
   const now=new Date();
-  const currentTime=now.getHours()*60+now.getMinutes(); // Current time in minutes
+  const currentTime=now.getHours()*60+now.getMinutes();
 
   const[startH,startM]=lockoutActiveStart.split(':').map(Number);
   const[endH,endM]=lockoutActiveEnd.split(':').map(Number);
   const startMinutes=startH*60+startM;
   const endMinutes=endH*60+endM;
 
-  // Handle overnight ranges (e.g., 22:00-06:00)
   if(startMinutes>endMinutes){
     return currentTime>=startMinutes||currentTime<endMinutes;
   }
@@ -3821,7 +3878,6 @@ function isWithinActiveHours(){
   return currentTime>=startMinutes&&currentTime<endMinutes;
 }
 
-// Helper: Check if it's time to auto-lock
 function checkScheduledLockTime(){
   if(!lockoutAtTime){
     return;
@@ -3833,11 +3889,9 @@ function checkScheduledLockTime(){
   const currentMin=now.getMinutes();
   const[targetH,targetM]=lockoutAtTime.split(':').map(Number);
 
-  // Check once per minute to avoid multiple locks
   const currentMinute=currentHour*60+currentMin;
   const targetMinute=targetH*60+targetM;
 
-  // Debug log every 60 seconds
   if(Math.floor(Date.now()/60000)!==Math.floor((Date.now()-1000)/60000)){
     const timeStr=String(currentHour).padStart(2,'0')+':'+String(currentMin).padStart(2,'0');
     console.log('[LOCKOUT-SCHED] Current: '+timeStr+' ('+currentMinute+' min) | Target: '+lockoutAtTime+' ('+targetMinute+' min) | Match: '+(currentMinute===targetMinute));
@@ -3858,44 +3912,35 @@ function checkLockoutTimer(){
 
   const now=Date.now();
 
-  // Check for scheduled lock time
   checkScheduledLockTime();
 
-  // Check inactivity-based lockout
   if(lockoutTimeout>0){
-    // Check if within active hours (if configured)
     if(!isWithinActiveHours()){
-      // Log every 60 seconds when outside active hours
       if(Math.floor(now/60000)!==Math.floor((now-1000)/60000)){
         console.log('[LOCKOUT] Outside active hours, lockout disabled');
       }
-      return; // Outside active hours, don't enforce lockout
+      return;
     }
 
-    // CRITICAL: Respect time extensions from pause button and manual site timeout
     if(inactivityExtensionUntil>0&&now<inactivityExtensionUntil){
-      // Still within extension period - don't lock
       const remaining=Math.floor((inactivityExtensionUntil-now)/1000);
       const remMin=Math.floor(remaining/60);
       const remSec=remaining%60;
 
-      // Log every 30 seconds during extension
       if(Math.floor(now/30000)!==Math.floor((now-1000)/30000)){
-        console.log('[LOCKOUT-INACT] ⏸ Extension active: '+remMin+'m '+remSec+'s remaining - lockout paused');
+        console.log('[LOCKOUT-INACT] ⸻ Extension active: '+remMin+'m '+remSec+'s remaining - lockout paused');
       }
-      return;  // Skip lockout check during extension
+      return;
     }else if(inactivityExtensionUntil>0&&now>=inactivityExtensionUntil){
-      // Extension expired - reset lockout activity timer
       console.log('[LOCKOUT-INACT] ⏰ Extension expired - resetting lockout timer');
       inactivityExtensionUntil=0;
-      lockoutActivityTime=now;  // CRITICAL: Reset so lockout doesn't trigger immediately
+      lockoutActivityTime=now;
     }
 
     const timeSinceActivity=now-lockoutActivityTime;
     const minutesSinceActivity=Math.floor(timeSinceActivity/60000);
     const lockoutMinutes=Math.floor(lockoutTimeout/60000);
 
-    // Log every 30 seconds
     if(Math.floor(timeSinceActivity/30000)!==Math.floor((timeSinceActivity-1000)/30000)){
       console.log('[LOCKOUT-INACT] Idle: '+minutesSinceActivity+'m / '+lockoutMinutes+'m');
     }
@@ -4028,7 +4073,7 @@ function checkMediaPlayback(){
       lastMediaStateChange=now;
     }else{
       if(wasPlaying){
-        console.log('[MEDIA] ⏸ Stopped');
+        console.log('[MEDIA] ⸻ Stopped');
       }
       mediaIsPlaying=false;
       if(wasPlaying){
@@ -4043,7 +4088,7 @@ function startMasterTimer(){
     clearInterval(masterTimer);
   }
 
-  console.log('[TIMER] ╔═══ MASTER TIMER STARTED ════╗');
+  console.log('[TIMER] ════ MASTER TIMER STARTED ════');
   console.log('[TIMER] Home tab index:',homeTabIndex);
   console.log('[TIMER] Inactivity timeout:',inactivityTimeout/1000,'seconds');
   console.log('[TIMER] Password protection:',enablePasswordProtection);
@@ -4052,7 +4097,7 @@ function startMasterTimer(){
     if(lockoutAtTime)console.log('[TIMER] Scheduled lock time:',lockoutAtTime);
     if(lockoutActiveStart&&lockoutActiveEnd)console.log('[TIMER] Active hours:',lockoutActiveStart,'-',lockoutActiveEnd);
   }
-  console.log('[TIMER] ╚═══════════════════════════════════╝');
+  console.log('[TIMER] ╚═══════════════════════════════╝');
 
   siteStartTime=Date.now();
   lastUserInteraction=Date.now();
@@ -4114,26 +4159,21 @@ function startMasterTimer(){
     
     // 6. SITE ROTATION
     if(!showingHidden&&views.length>1){
-      // CRITICAL: Don't rotate while pause dialog is open (user is selecting time)
       if(pauseWindow&&!pauseWindow.isDestroyed()){
         return;
       }
 
-      // CRITICAL: Don't rotate while inactivity prompt is open (user is responding)
       if(promptWindow&&!promptWindow.isDestroyed()){
         return;
       }
 
-      // Skip rotation if user is in an extension period (they confirmed they're still there)
       if(inactivityExtensionUntil>0&&now<inactivityExtensionUntil){
-        // Log every 30 seconds during extension
         if(Math.floor(now/30000)!==Math.floor((now-1000)/30000)){
           const remaining=Math.floor((inactivityExtensionUntil-now)/1000);
           const remMin=Math.floor(remaining/60);
           const remSec=remaining%60;
-          console.log('[ROTATION] ⏸ Paused - Extension active: '+remMin+'m '+remSec+'s remaining');
+          console.log('[ROTATION] ⸻ Paused - Extension active: '+remMin+'m '+remSec+'s remaining');
         }
-        // Don't rotate during extension period
         return;
       }
 
@@ -4147,70 +4187,72 @@ function startMasterTimer(){
 
           if(timeOnSite>=siteDuration*1000){
             rotateToNextSite();
-            return; // CRITICAL: Don't run HOME RETURN CHECK after rotating - site was timed
+            return;
           }
         }
       }
     }
     
-// 7. HOME RETURN CHECK (manual sites only)
-    if(homeTabIndex>=0&&!showingHidden){
-      const homeViewIdx=getHomeViewIndex();
-      const currentTabIdx=viewIndexToTabIndex(currentIndex);
+    // 7. HOME RETURN CHECK (manual and hidden sites)
+    if(homeTabIndex>=0){
+      if(pauseWindow&&!pauseWindow.isDestroyed()){
+        return;
+      }
 
-      // Only show home return prompt for manual sites (duration = 0)
-      // Timed sites use the pause button instead
-      if(homeViewIdx>=0&&currentIndex!==homeViewIdx&&currentTabIdx>=0&&tabs[currentTabIdx]){
-        const siteDuration=parseInt(tabs[currentTabIdx].duration)||0;
+      if(promptWindow&&!promptWindow.isDestroyed()){
+        return;
+      }
 
-        // Skip home return check for timed rotation sites
-        if(siteDuration>0){
-          // This is a timed site - pause button is used instead
-          return;
+      let needsInactivityCheck=false;
+      let currentSiteDuration=-999;
+
+      if(showingHidden){
+        needsInactivityCheck=true;
+        currentSiteDuration=-1;
+      }else{
+        const homeViewIdx=getHomeViewIndex();
+        const currentTabIdx=viewIndexToTabIndex(currentIndex);
+
+        if(homeViewIdx>=0&&currentIndex!==homeViewIdx&&currentTabIdx>=0&&tabs[currentTabIdx]){
+          currentSiteDuration=parseInt(tabs[currentTabIdx].duration)||0;
+
+          if(currentSiteDuration===0){
+            needsInactivityCheck=true;
+          }
         }
+      }
 
-        // CRITICAL: Don't show prompt while pause dialog is open
-        if(pauseWindow&&!pauseWindow.isDestroyed()){
-          return;
-        }
-
-        // CRITICAL: Don't show prompt while inactivity prompt is already open
-        if(promptWindow&&!promptWindow.isDestroyed()){
-          return;
-        }
-
+      if(needsInactivityCheck){
         const idleTime=now-lastUserInteraction;
 
-        // CRITICAL FIX: Use absolute time check for extensions
         let effectiveTimeout=inactivityTimeout;
         if(inactivityExtensionUntil>0&&now<inactivityExtensionUntil){
-          // Still within extension period - don't timeout
           if(Math.floor(idleTime/15000)!==Math.floor((idleTime-1000)/15000)){
             const remaining=Math.floor((inactivityExtensionUntil-now)/1000);
             const remMin=Math.floor(remaining/60);
             const remSec=remaining%60;
             console.log('[HOME] ⏰ Extended mode: '+remMin+'m '+remSec+'s remaining');
           }
-          return;  // Skip timeout check during extension
+          return;
         }else if(inactivityExtensionUntil>0&&now>=inactivityExtensionUntil){
-          // Extension expired - clear it and reset inactivity timer
           console.log('[HOME] ⏰ Extension expired - resetting inactivity timer');
           inactivityExtensionUntil=0;
-          lastUserInteraction=now;  // CRITICAL: Reset interaction time so prompt doesn't show immediately
-          siteStartTime=now;  // Also reset rotation timer
+          lastUserInteraction=now;
+          siteStartTime=now;
         }
 
-        // Log every 15 seconds
         if(Math.floor(idleTime/15000)!==Math.floor((idleTime-1000)/15000)){
           const idleMinutes=Math.floor(idleTime/60000);
           const idleSeconds=Math.floor((idleTime%60000)/1000);
           const timeoutMinutes=Math.floor(effectiveTimeout/60000);
           const timeoutSeconds=Math.floor((effectiveTimeout%60000)/1000);
-          console.log('[HOME] 🏠 IDLE: '+idleMinutes+'m '+idleSeconds+'s / '+timeoutMinutes+'m '+timeoutSeconds+'s');
+          const siteType=currentSiteDuration===-1?'HIDDEN':'MANUAL';
+          console.log('[HOME] 🏠 '+siteType+' IDLE: '+idleMinutes+'m '+idleSeconds+'s / '+timeoutMinutes+'m '+timeoutSeconds+'s');
         }
 
         if(idleTime>=effectiveTimeout){
-          console.log('[HOME] 🔔 *** SHOWING PROMPT NOW ***');
+          console.log('[HOME] 🔔 *** SHOWING PROMPT NOW ('+
+            (currentSiteDuration===-1?'hidden tab':'manual site')+') ***');
           showInactivityPrompt();
         }
       }
@@ -4250,7 +4292,7 @@ function rotateToNextSite(){
   if(found&&nextIdx!==currentIndex){
     currentIndex=nextIdx;
     attachView(currentIndex);
-    inactivityExtensionUntil=0;  // Clear extension when rotating to a new site
+    inactivityExtensionUntil=0;
     console.log('[ROTATION] Extension cleared - rotated to new site');
   }
 }
@@ -4258,7 +4300,6 @@ function rotateToNextSite(){
 function attachView(i){
   closeHTMLKeyboard();
 
-  // Don't change views while locked out
   if(isLockedOut){
     console.log('[MAIN] Blocked attachView - screen is locked');
     return;
@@ -4267,7 +4308,6 @@ function attachView(i){
   if(!mainWindow||!views[i]||showingHidden)return;
 
   currentIndex=i;
-  // Ensure view is added to window before setting as top (prevents "not attached" error after lockout)
   try{
     mainWindow.addBrowserView(views[i]);
   }catch(e){
@@ -4287,8 +4327,6 @@ function attachView(i){
       views[i].webContents.loadURL(configuredUrl);
     }
 
-    // Control pause button visibility based on site duration
-    // Show on rotation sites (duration > 0), hide on manual sites (duration = 0)
     const siteDuration=parseInt(tabs[tabIdx].duration)||0;
     const shouldShow=enablePauseButton&&siteDuration>0;
     console.log('[MAIN] Sending pause-button-visibility to tab '+tabIdx+' ('+tabs[tabIdx].url+') - duration='+siteDuration+'s, shouldShow='+shouldShow);
@@ -4307,7 +4345,7 @@ function nextTab(){
   currentIndex=(currentIndex+1)%views.length;
   attachView(currentIndex);
   markActivity();
-  inactivityExtensionUntil=0;  // Clear extension on manual navigation
+  inactivityExtensionUntil=0;
   console.log('[MANUAL] Extension cleared due to manual tab switch');
 }
 
@@ -4319,7 +4357,7 @@ function prevTab(){
   currentIndex=(currentIndex-1+views.length)%views.length;
   attachView(currentIndex);
   markActivity();
-  inactivityExtensionUntil=0;  // Clear extension on manual navigation
+  inactivityExtensionUntil=0;
   console.log('[MANUAL] Extension cleared due to manual tab switch');
 }
 
@@ -4353,7 +4391,6 @@ function returnToHome(){
 
   inactivityExtensionUntil=0;
 
-  // Reset lockout timer on activity
   if(enablePasswordProtection&&lockoutTimeout>0&&!isLockedOut){
     lockoutActivityTime=Date.now();
   }
@@ -4395,35 +4432,27 @@ function showInactivityPrompt(){
     promptWindow=null;
 
     if(minutes===-1){
-      // User clicked "No, go home"
       inactivityExtensionUntil=0;
 
-      // Reset lockout timer on activity
       if(enablePasswordProtection&&lockoutTimeout>0&&!isLockedOut){
         lockoutActivityTime=Date.now();
       }
       returnToHome();
     }else if(minutes===0){
-      // User clicked "Yes, I'm still here" - reset everything
       inactivityExtensionUntil=0;
 
-      // Reset lockout timer on activity
       if(enablePasswordProtection&&lockoutTimeout>0&&!isLockedOut){
         lockoutActivityTime=Date.now();
       }
       markActivity();
-      // CRITICAL: Reset site rotation timer so they stay on current page
       siteStartTime=Date.now();
       console.log('[PROMPT] User confirmed presence - rotation timer reset');
     }else{
-      // User selected a time extension
       const now=Date.now();
       inactivityExtensionUntil=now+(minutes*60*1000);
       lastUserInteraction=now;
-      // CRITICAL: Reset site rotation timer during extension
       siteStartTime=now;
 
-      // CRITICAL: Reset lockout timer during extension
       if(enablePasswordProtection&&lockoutTimeout>0&&!isLockedOut){
         lockoutActivityTime=now;
         console.log('[PROMPT] Lockout timer also reset during extension');
@@ -4461,16 +4490,13 @@ function showPauseDialog(){
     pauseWindow=null;
 
     if(minutes===0){
-      // Cancel - do nothing
       console.log('[PAUSE] Cancelled');
     }else{
-      // Set extension time
       const now=Date.now();
       inactivityExtensionUntil=now+(minutes*60*1000);
       lastUserInteraction=now;
       siteStartTime=now;
 
-      // CRITICAL: Reset lockout timer during extension
       if(enablePasswordProtection&&lockoutTimeout>0&&!isLockedOut){
         lockoutActivityTime=now;
         console.log('[PAUSE] Lockout timer also reset during extension');
@@ -4686,10 +4712,8 @@ function showPowerMenu(){
     }
   }
 
-  // Show limited menu when locked out (no Reload option to prevent bypass)
   if(isLockedOut){
     console.log('[SECURITY] Showing limited power menu - system is locked out');
-    // Show power menu on lockoutWindow (solid screen) instead of mainWindow
     const targetWindow=(lockoutWindow&&!lockoutWindow.isDestroyed())?lockoutWindow:mainWindow;
     const r=dialog.showMessageBoxSync(targetWindow,{
       type:'question',
@@ -4705,7 +4729,6 @@ function showPowerMenu(){
     return;
   }
 
-  // Full menu when unlocked
   const r=dialog.showMessageBoxSync(mainWindow,{
     type:'question',
     buttons:['Shutdown','Restart','Reload','Cancel'],
@@ -4815,12 +4838,10 @@ function createWindow(){
         });
       `).catch(()=>{});
 
-      // Send pause button visibility on every page load to handle reloads
       const siteDuration=parseInt(t.duration)||0;
       const shouldShow=enablePauseButton&&siteDuration>0;
       view.webContents.send('pause-button-visibility',shouldShow);
 
-      // Send keyboard button enabled status
       view.webContents.send('keyboard-button-enabled',enableKeyboardButton);
       console.log('[MAIN] Page loaded - sending keyboard-button-enabled: '+enableKeyboardButton);
       console.log('[MAIN] Page loaded - resending pause-button-visibility: '+shouldShow+' for '+t.url);
@@ -4842,15 +4863,12 @@ function createWindow(){
   
   if(views.length){
     setTimeout(()=>{
-      // Check for boot flag FIRST - require password on boot if configured
       const bootFlag=path.join(__dirname,'.boot-flag');
       if(enablePasswordProtection&&lockoutPassword&&requirePasswordOnBoot&&fs.existsSync(bootFlag)){
         console.log('[LOCKOUT] Boot detected, requiring password BEFORE showing sites');
         fs.unlinkSync(bootFlag);
         showLockoutScreen();
-        // Don't attach view or start timer - wait for password unlock
       }else{
-        // Normal startup - show sites
         attachView(startIndex);
         startMasterTimer();
       }
@@ -4861,12 +4879,21 @@ function createWindow(){
   ipcMain.on('swipe-right',()=>{prevTab();});
   ipcMain.on('show-power-menu',showPowerMenu);
   ipcMain.on('toggle-hidden',toggleHidden);
+  ipcMain.on('return-to-tabs',forceReturnToTabs);
   ipcMain.on('user-activity',markActivity);
   ipcMain.on('show-keyboard',()=>{showHTMLKeyboard();});
   ipcMain.on('close-keyboard',()=>{closeHTMLKeyboard();});
   ipcMain.on('keyboard-activity',()=>{markKeyboardActivity();});
   ipcMain.on('show-pause-dialog',()=>{showPauseDialog();});
-ipcMain.on('check-lockout-password',(event,hash)=>{    if(hash===lockoutPassword){      unlockScreen();    }else{      if(lockoutWindow&&!lockoutWindow.isDestroyed()){        lockoutWindow.webContents.send('password-incorrect');      }    }  });
+  ipcMain.on('check-lockout-password',(event,hash)=>{
+    if(hash===lockoutPassword){
+      unlockScreen();
+    }else{
+      if(lockoutWindow&&!lockoutWindow.isDestroyed()){
+        lockoutWindow.webContents.send('password-incorrect');
+      }
+    }
+  });
   
   ipcMain.on('keyboard-type',(event,key)=>{
     markKeyboardActivity();
@@ -5657,21 +5684,29 @@ echo "[15/27] Creating inactivity prompt..."
 </html>
 INACTHTML
     
-#    echo "1234" | sudo -u "$KIOSK_USER" tee "$KIOSK_DIR/.jitsi-pin" >/dev/null
-#    sudo -u "$KIOSK_USER" chmod 600 "$KIOSK_DIR/.jitsi-pin"
-#    log_success "Default PIN: 1234"
+    echo "1234" | sudo -u "$KIOSK_USER" tee "$KIOSK_DIR/.jitsi-pin" >/dev/null
+    sudo -u "$KIOSK_USER" chmod 600 "$KIOSK_DIR/.jitsi-pin"
+    log_success "Default PIN: 1234"
 ###########################################################################
 ############################start-preload##################################
 ###########################################################################
 sudo -u "$KIOSK_USER" tee "$KIOSK_DIR/preload.js" > /dev/null <<'PRELOAD'
 const {contextBridge,ipcRenderer}=require('electron');
 
-contextBridge.exposeInMainWorld('electronAPI',{
-  notifyActivity:()=>ipcRenderer.send('user-activity'),
-  showKeyboard:()=>ipcRenderer.send('show-keyboard'),
-  closeKeyboard:()=>ipcRenderer.send('close-keyboard'),
-  keyboardActivity:()=>ipcRenderer.send('keyboard-activity'),
-  showPauseDialog:()=>ipcRenderer.send('show-pause-dialog')
+console.log('═════════════════════════════════════════════════════════════');
+console.log('  Gestures:');
+console.log('    3-finger UP: Show hidden tabs (PIN required)');
+console.log('    3-finger DOWN: Return to normal tabs');
+console.log('    2-finger HORIZONTAL: Switch between sites');
+console.log('  Keyboard: Auto-shows on text fields or click icon');
+console.log('╚═══════════════════════════════════════════════════════════╝');
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  notifyActivity: () => ipcRenderer.send('user-activity'),
+  showKeyboard: () => ipcRenderer.send('show-keyboard'),
+  closeKeyboard: () => ipcRenderer.send('close-keyboard'),
+  keyboardActivity: () => ipcRenderer.send('keyboard-activity'),
+  showPauseDialog: () => ipcRenderer.send('show-pause-dialog')
 });
 
 // Pause button state (MUST be outside DOMContentLoaded to persist across page loads)
@@ -5924,32 +5959,28 @@ window.addEventListener('DOMContentLoaded',()=>{
       const absX=Math.abs(deltaX);
       const absY=Math.abs(deltaY);
       
+      // 3-finger UP = show hidden tabs
       if(fingerCount===3&&absY>SWIPE_THRESHOLD&&absX<SWIPE_TOLERANCE&&deltaY<0){
         ipcRenderer.send('toggle-hidden');
       }
-      else if(fingerCount===2&&absY>SWIPE_THRESHOLD&&absX<SWIPE_TOLERANCE&&deltaY>0){
-        if(keyboardButtonEnabled){
-          keyboardAutoClosedThisSession=false;
-          if(keyboardVisible){
-            ipcRenderer.send('close-keyboard');
-          }else{
-            ipcRenderer.send('show-keyboard');
-          }
-        }
+      // 3-finger DOWN = return to normal tabs (close hidden)
+      else if(fingerCount===3&&absY>SWIPE_THRESHOLD&&absX<SWIPE_TOLERANCE&&deltaY>0){
+        console.log('[TOUCH] 3-finger DOWN - return to normal tabs');
+        ipcRenderer.send('return-to-tabs');
       }
+      // 2-finger HORIZONTAL = change tabs
       else if(fingerCount===2&&absX>SWIPE_THRESHOLD&&absY<SWIPE_TOLERANCE){
         ipcRenderer.send(deltaX>0?'swipe-right':'swipe-left');
       }
-      else if(fingerCount===1&&absX<30&&absY<30){
-        const target=document.elementFromPoint(touchEndX,touchEndY);
-        if(keyboardButtonEnabled&&target&&isTextInput(target)&&!keyboardVisible){
-          keyboardAutoClosedThisSession=false;
-          const now=Date.now();
-          if(now-lastKeyboardRequest>KEYBOARD_REQUEST_THROTTLE){
-            lastKeyboardRequest=now;
-            setTimeout(()=>ipcRenderer.send('show-keyboard'),50);
-          }
-        }
+      // 1-finger HORIZONTAL = arrow keys
+      else if(fingerCount===1&&absX>SWIPE_THRESHOLD&&absY<SWIPE_TOLERANCE){
+        const key=deltaX>0?'ArrowRight':'ArrowLeft';
+        const keyCode=deltaX>0?39:37;
+        ['keydown','keyup'].forEach(eventType=>{
+          document.dispatchEvent(new KeyboardEvent(eventType,{
+            key:key,code:key,keyCode:keyCode,which:keyCode,bubbles:true,cancelable:true
+          }));
+        });
       }
     }
   },{passive:true});
@@ -8637,9 +8668,9 @@ show_main_menu() {
 core_menu() {
     while true; do
         clear
-        echo "════════════════════════════════════════════════════════════"
+        echo "══════════════════════════════════════════════════════════"
         echo "   CORE SETTINGS                                             "
-        echo "╚════════════════════════════════════════════════════════════╝"
+        echo "══════════════════════════════════════════════════════════"
         echo
         show_current_config
         echo
@@ -8652,11 +8683,12 @@ core_menu() {
         echo "  6. Power/Display/Quiet Hours"
         echo "  7. Optional Features (Pause/Keyboard)"
         echo "  8. Password Protection & Lockout"
-        echo "  9. Full reinstall"
-        echo "  10. Complete uninstall"
+        echo "  9. Hidden Site PIN"                    # <- ADD THIS
+        echo " 10. Full reinstall"
+        echo " 11. Complete uninstall"
         echo "  0. Return"
         echo
-        read -r -p "Choose [0-10]: " choice
+        read -r -p "Choose [0-11]: " choice            # <- UPDATE THIS
 
         case "$choice" in
             1) configure_timezone; pause ;;
@@ -8667,8 +8699,9 @@ core_menu() {
             6) configure_power_display_quiet ;;
             7) load_existing_config; if configure_optional_features; then save_config; fi ;;
             8) load_existing_config; if configure_password_protection; then save_config; fi ;;
-            9) full_reinstall; return ;;
-            10) complete_uninstall; return ;;
+            9) configure_hidden_site_pin ;;           # <- ADD THIS
+            10) full_reinstall; return ;;             # <- UPDATE THESE
+            11) complete_uninstall; return ;;         # <- UPDATE THESE
             0) return ;;
         esac
     done
@@ -8850,7 +8883,7 @@ audio_diagnostics() {
 
 fix_squeezelite_audio() {
     clear
-    echo "╔══ FIX SQUEEZELITE AUDIO ══╗"
+    echo "═══ FIX SQUEEZELITE AUDIO ═══"
     echo
     
     echo "This will attempt to fix Squeezelite audio issues by:"
