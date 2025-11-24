@@ -61,14 +61,15 @@ The installer will guide you through configuration during setup.
 ### Multi-Site Management
 - **Single or multiple sites** with independent configurations
 - **Auto-rotation** - Sites rotate automatically based on duration
-- **Manual sites** - Duration = 0, accessible via swipe only
-- **Hidden sites** - Duration = -1, PIN-protected access
-- **Home URL** - Auto-return after inactivity on other sites
+- **Manual sites** - Duration = 0, accessible via swipe only, trigger inactivity timeout
+- **Hidden sites** - Duration = -1, PIN-protected access, trigger inactivity timeout
+- **Home URL** - Auto-return after inactivity on manual or hidden sites
 - **Pause functionality** - Temporarily pause rotation (configurable per-site)
 
 ### Touch Controls
 - **2-finger horizontal swipe** - Switch between sites
 - **3-finger up swipe** - Access hidden tabs (PIN required)
+- **3-finger down swipe** - Return to normal tabs (from hidden tabs)
 - **1-finger swipe** (dual mode) - Navigate within page (arrow keys)
 - **On-screen keyboard** - Auto-shows on text fields or click keyboard icon
 
@@ -234,6 +235,40 @@ xinput list
 
 # Check Electron logs for touch events
 sudo tail -f /home/kiosk/electron.log | grep TOUCH
+
+# Test gestures (should show in logs):
+# - 3-finger UP = "[TOUCH] 3-finger UP - show hidden tab"
+# - 3-finger DOWN = "[TOUCH] 3-finger DOWN - return to normal tabs"
+# - 2-finger HORIZONTAL = "[MANUAL] User switched tab..."
+```
+
+**Hidden sites not showing:**
+```bash
+# Check PIN file exists
+ls -la /home/kiosk/kiosk-app/.jitsi-pin
+
+# View current PIN
+sudo cat /home/kiosk/kiosk-app/.jitsi-pin
+
+# Check for hidden sites in config
+sudo jq '.tabs[] | select(.duration == -1)' /home/kiosk/kiosk-app/config.json
+
+# Check if inactivity timeout is working on hidden tabs
+sudo tail -f /home/kiosk/electron.log | grep HOME
+# Should show: "[HOME] HIDDEN IDLE: Xm Ys / Ym Ys"
+```
+
+**Inactivity prompt not appearing:**
+```bash
+# Check home tab configuration
+sudo jq '.homeTabIndex, .inactivityTimeout' /home/kiosk/kiosk-app/config.json
+
+# Watch for inactivity logging
+sudo tail -f /home/kiosk/electron.log | grep HOME
+
+# Manual site: "[HOME] 🏠 MANUAL IDLE: 1m 45s / 2m 0s"
+# Hidden site: "[HOME] 🏠 HIDDEN IDLE: 1m 45s / 2m 0s"
+# Prompt shown: "[HOME] 🔔 *** SHOWING PROMPT NOW (hidden tab) ***"
 ```
 
 **Keyboard not appearing:**
@@ -321,6 +356,28 @@ smb://WORKGROUP/COMPUTER/PrinterName
 - **Authentication failed:** Verify Windows printer sharing is enabled
 - **Can't find printer:** Use `lpinfo -v` to list all available devices
 
+---
+
+## Touch Gesture Quick Reference
+
+| Gesture | Fingers | Direction | Action |
+|---------|---------|-----------|--------|
+| Swipe | 2 | Left/Right | Switch between sites |
+| Swipe | 1 | Left/Right | Navigate within page (arrow keys) |
+| Swipe | 3 | Up | Show hidden tabs (PIN required) |
+| Swipe | 3 | Down | Return to normal tabs |
+
+**Keyboard Shortcuts:**
+- `Ctrl+Tab` or `Ctrl+]` - Next tab
+- `Ctrl+Shift+Tab` or `Ctrl+[` - Previous tab
+- `Alt+Right/Left` - Next/Previous tab
+- `F10` or `Ctrl+H` - Toggle hidden tabs
+- `Escape` - Return to normal tabs (from hidden)
+- `Ctrl+Alt+Delete` or `Ctrl+Alt+P` - Power menu
+- `Ctrl+K` - Toggle keyboard
+
+---
+
 ### Menu System Access
 
 ```bash
@@ -383,6 +440,23 @@ sudo systemctl restart lightdm
 
 **Note:** Config files may contain `lockoutActiveStart` and `lockoutActiveEnd` fields from earlier versions. These are not currently functional and are ignored by the application.
 
+### Hidden Sites PIN
+`/home/kiosk/kiosk-app/.jitsi-pin`
+
+The PIN file controls access to hidden sites (duration = -1):
+- **Default:** `1234`
+- **Configure via:** Main Menu → Core Settings → Sites → Configure Hidden Sites PIN
+- **Disable PIN:** Set content to `NOPIN` to allow any entry
+- **Custom PIN:** 4-8 digits
+
+```bash
+# Set custom PIN
+echo "5678" | sudo -u kiosk tee /home/kiosk/kiosk-app/.jitsi-pin
+
+# Disable PIN protection
+echo "NOPIN" | sudo -u kiosk tee /home/kiosk/kiosk-app/.jitsi-pin
+```
+
 ---
 
 ## Advanced Features
@@ -400,21 +474,30 @@ sudo systemctl restart lightdm
 - Never auto-rotates
 - No pause button (not needed)
 - Can be set as Home URL
+- Triggers inactivity timeout (returns to home after idle time)
 
 **Hidden (duration = -1):**
 - Accessible via 3-finger up swipe + PIN
+- Return to normal tabs via 3-finger down swipe or Escape key
 - PIN stored in `/home/kiosk/kiosk-app/.jitsi-pin`
-- Default PIN: 1234
+- Default PIN: 1234 (configurable via Sites menu)
+- PIN can be 4-8 digits or disabled completely
 - Hidden from normal rotation
+- **Triggers inactivity timeout** (returns to home after idle time, just like manual sites)
 
 ### Inactivity Extensions
 
-When "Are you still here?" prompt appears:
+When "Are you still here?" prompt appears (on manual or hidden sites):
 - **"Yes, I'm still here"** - Reset all timers, stay on current page
 - **Time extensions** (15m, 30m, 1h, 2h) - Pause rotation and inactivity
 - **"No, go home"** - Return to home URL immediately
 - Extensions pause BOTH rotation and lockout timers
 - Maximum extension: 4 hours (safety timeout)
+
+**Triggers on:**
+- Manual sites (duration = 0) after inactivity timeout
+- Hidden sites (duration = -1) after inactivity timeout  
+- Does NOT trigger on auto-rotating sites (duration > 0) - they use pause button instead
 
 ### Lockout Behavior
 
@@ -639,5 +722,5 @@ Special thanks to the maintainers of all upstream projects that make UBK possibl
 
 ---
 
-*Last Updated: November 2025*  
+*Last Updated: November 23 2025*  
 *Version: Check script header for current version*
