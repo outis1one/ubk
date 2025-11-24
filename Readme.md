@@ -308,7 +308,7 @@ From Windows, find the printer's URI:
 - Windows shows: `http://192.168.1.100/ipp/print` or similar
 - CUPS URI: `ipp://192.168.1.100/ipp/print`
 - Alternative: `http://192.168.1.100:631/ipp/print`
-
+gumble
 **Generic Network Printers (Socket/JetDirect):**
 - Windows shows: `Standard TCP/IP Port` on `192.168.1.100`
 - CUPS URI: `socket://192.168.1.100:9100`
@@ -634,13 +634,6 @@ This project bundles or installs several open-source components under their resp
 - **Repository:** https://github.com/netbirdio/netbird
 - **Full License:** https://github.com/netbirdio/netbird/blob/main/LICENSE
 
-### Mumble Client (Voice Communication)
-- **License:** BSD-3-Clause
-- **Source:** https://www.mumble.info
-- **Repository:** https://github.com/mumble-voip/mumble
-- **Full License:** https://github.com/mumble-voip/mumble/blob/master/LICENSE
-- **Note:** Used in separate voice communication components
-
 ### Murmur Server (Mumble Server)
 - **License:** BSD-3-Clause
 - **Source:** https://www.mumble.info
@@ -648,12 +641,12 @@ This project bundles or installs several open-source components under their resp
 - **Full License:** https://github.com/mumble-voip/mumble/blob/master/LICENSE
 - **Note:** Used in separate voice communication components
 
-### TalkKonnect (Mumble PTT Client)
-- **License:** Mozilla Public License 2.0 (MPL-2.0)
-- **Source:** https://github.com/talkkonnect/talkkonnect
-- **Repository:** https://github.com/talkkonnect/talkkonnect
-- **Full License:** https://github.com/talkkonnect/talkkonnect/blob/master/LICENSE
-- **Note:** Used in separate voice communication components
+### Gumble (Mumble Cli Client) (Mumble Client Library for Go)
+- * **License:** Mozilla Public License 2.0 (MPL-2.0)
+- * **Source:** https://github.com/layeh/gumble
+- * **Full License:** https://github.com/layeh/gumble/blob/master/LICENSE
+- * **Note:** Used as the core client library for Mumble protocol integration
+
 
 ---
 
