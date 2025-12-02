@@ -2146,7 +2146,75 @@ disable_emergency_hotspot() {
     pause
 }
 
+################################################################################
+### VIRTUAL CONSOLE CONFIGURATION
+################################################################################
 
+configure_virtual_consoles() {
+    clear
+    echo "══════════════════════════════════════════════════════════════"
+    echo "   VIRTUAL CONSOLE CONFIGURATION                              "
+    echo "══════════════════════════════════════════════════════════════"
+    echo
+    echo "Virtual consoles (Ctrl+Alt+F1 through F8) allow manual login"
+    echo "to a terminal for troubleshooting and system maintenance."
+    echo
+    echo "Current status:"
+
+    # Check if virtual consoles are enabled
+    local consoles_disabled=false
+    if systemctl is-masked getty@tty1.service >/dev/null 2>&1; then
+        consoles_disabled=true
+        echo "  Virtual consoles: ✗ DISABLED"
+    else
+        consoles_disabled=false
+        echo "  Virtual consoles: ✓ ENABLED"
+    fi
+
+    echo
+    echo "Options:"
+    echo "  1. Enable virtual consoles (Ctrl+Alt+F1-F8 for manual login)"
+    echo "  2. Disable virtual consoles (more secure, kiosk only)"
+    echo "  0. Cancel"
+    echo
+    read -r -p "Choose [0-2]: " choice
+
+    case "$choice" in
+        1)
+            echo
+            echo "Enabling virtual consoles..."
+            for i in {1..8}; do
+                sudo systemctl unmask getty@tty$i.service 2>/dev/null || true
+            done
+            sudo systemctl daemon-reload
+            log_success "Virtual consoles enabled"
+            echo
+            echo "You can now access virtual consoles with:"
+            echo "  Ctrl+Alt+F1 through Ctrl+Alt+F8"
+            echo "  (Ctrl+Alt+F7 typically returns to the kiosk)"
+            pause
+            ;;
+        2)
+            echo
+            read -r -p "Disable all virtual consoles? (y/n): " confirm
+            if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                echo "Disabling virtual consoles..."
+                for i in {1..8}; do
+                    sudo systemctl mask getty@tty$i.service 2>/dev/null || true
+                done
+                sudo systemctl daemon-reload
+                log_success "Virtual consoles disabled"
+                echo
+                echo "Virtual console access has been disabled for security."
+                echo "You can re-enable them from the Tools menu if needed."
+                pause
+            fi
+            ;;
+        0)
+            return
+            ;;
+    esac
+}
 
 ################################################################################
 ### SECTION 5: POWER/DISPLAY/QUIET SCHEDULES
@@ -3474,6 +3542,124 @@ full_reinstall() {
     log_success "Nuclear reinstall complete! System is FRESH."
     echo ""
     pause
+}
+
+complete_uninstall() {
+    echo ""
+    echo "══════════════════════════════════════════════════════════════"
+    echo "  COMPLETE UNINSTALL"
+    echo "══════════════════════════════════════════════════════════════"
+    echo ""
+    echo "⚠️  This will COMPLETELY REMOVE:"
+    echo "  • Kiosk user and all data"
+    echo "  • All kiosk configuration and sites"
+    echo "  • All Electron/Node.js installations"
+    echo "  • All browser caches and data"
+    echo "  • CUPS printer system"
+    echo "  • LightDM and Openbox"
+    echo "  • All kiosk schedules and services"
+    echo "  • Emergency hotspot configuration"
+    echo ""
+    echo "⚠️  This CANNOT be undone!"
+    echo ""
+    read -p "Are you ABSOLUTELY SURE? (type UNINSTALL): " CONFIRM
+
+    if [ "$CONFIRM" != "UNINSTALL" ]; then
+        echo "Cancelled."
+        return
+    fi
+
+    echo ""
+    echo "Beginning complete uninstall..."
+
+    # Stop all services
+    echo "[1/12] Stopping all kiosk services..."
+    sudo systemctl stop lightdm 2>/dev/null || true
+    sudo systemctl stop kiosk-emergency-hotspot.service 2>/dev/null || true
+    sudo systemctl stop kiosk-shutdown.timer 2>/dev/null || true
+    sudo systemctl stop kiosk-display-on.timer 2>/dev/null || true
+    sudo systemctl stop kiosk-display-off.timer 2>/dev/null || true
+    sudo systemctl stop kiosk-quiet-start.timer 2>/dev/null || true
+    sudo systemctl stop kiosk-quiet-end.timer 2>/dev/null || true
+    sudo systemctl stop kiosk-electron-reload.timer 2>/dev/null || true
+    sudo systemctl stop x11vnc 2>/dev/null || true
+
+    # Remove kiosk user
+    echo "[2/12] Removing kiosk user..."
+    if id "$KIOSK_USER" &>/dev/null; then
+        sudo pkill -u "$KIOSK_USER" 2>/dev/null || true
+        sudo userdel -r "$KIOSK_USER" 2>/dev/null || true
+        log_success "Kiosk user removed"
+    fi
+
+    # Remove kiosk files
+    echo "[3/12] Removing kiosk files..."
+    sudo rm -rf "$KIOSK_DIR"
+    sudo rm -rf /home/$KIOSK_USER
+
+    # Remove systemd services and timers
+    echo "[4/12] Removing systemd services..."
+    sudo rm -f /etc/systemd/system/kiosk-*.service
+    sudo rm -f /etc/systemd/system/kiosk-*.timer
+    sudo rm -f /etc/systemd/system/x11vnc.service
+    sudo systemctl daemon-reload
+
+    # Remove scripts
+    echo "[5/12] Removing scripts..."
+    sudo rm -f /usr/local/bin/kiosk-*
+    sudo rm -f /usr/local/bin/rtc-wake.sh
+
+    # Remove CUPS
+    echo "[6/12] Removing CUPS..."
+    sudo systemctl stop cups 2>/dev/null || true
+    sudo systemctl disable cups 2>/dev/null || true
+    sudo apt-get purge -y cups cups-client cups-common 2>/dev/null || true
+
+    # Remove Node.js and Electron
+    echo "[7/12] Removing Node.js..."
+    sudo apt-get purge -y nodejs npm 2>/dev/null || true
+    sudo rm -rf /usr/local/lib/node_modules
+    sudo rm -rf /usr/local/bin/node
+    sudo rm -rf /usr/local/bin/npm
+
+    # Remove LightDM and Openbox
+    echo "[8/12] Removing LightDM and Openbox..."
+    sudo systemctl disable lightdm 2>/dev/null || true
+    sudo apt-get purge -y lightdm openbox 2>/dev/null || true
+
+    # Remove VNC
+    echo "[9/12] Removing VNC..."
+    sudo systemctl stop x11vnc 2>/dev/null || true
+    sudo systemctl disable x11vnc 2>/dev/null || true
+    sudo apt-get purge -y x11vnc 2>/dev/null || true
+
+    # Remove polkit rules
+    echo "[10/12] Removing polkit rules..."
+    sudo rm -f /etc/polkit-1/localauthority/50-local.d/kiosk-power.pkla
+
+    # System cleanup
+    echo "[11/12] Cleaning up packages..."
+    sudo apt-get autoremove -y 2>/dev/null || true
+    sudo apt-get autoclean 2>/dev/null || true
+
+    # Re-enable virtual consoles if they were disabled
+    echo "[12/12] Re-enabling virtual consoles..."
+    for i in {1..6}; do
+        sudo systemctl unmask getty@tty$i.service 2>/dev/null || true
+    done
+
+    echo ""
+    echo "✓✓✓ KIOSK COMPLETELY UNINSTALLED ✓✓✓"
+    echo ""
+    echo "The system has been returned to its pre-kiosk state."
+    echo "You may want to reboot to ensure all changes take effect."
+    echo ""
+    read -r -p "Reboot now? (y/n): " do_reboot
+    if [[ "$do_reboot" =~ ^[Yy]$ ]]; then
+        echo "Rebooting..."
+        sleep 3
+        sudo reboot
+    fi
 }
 ################################################################################
 ### SECTION 8: FIRST TIME INSTALLATION
@@ -6575,6 +6761,52 @@ fi
     echo "[26/27] Finalizing installation..."
     log_success "Core installation complete!"
     echo
+
+    # Optional: Configure emergency hotspot
+    echo
+    echo "══════════════════════════════════════════════════════════════"
+    echo "   OPTIONAL: Emergency Hotspot                                "
+    echo "══════════════════════════════════════════════════════════════"
+    echo
+    echo "The emergency hotspot automatically activates when there's no"
+    echo "internet connection, allowing you to connect and troubleshoot."
+    echo
+    read -r -p "Configure emergency hotspot now? (y/n): " setup_hotspot
+    if [[ "$setup_hotspot" =~ ^[Yy]$ ]]; then
+        install_emergency_hotspot
+    else
+        log_info "Emergency hotspot can be configured later from Advanced menu"
+    fi
+
+    # Optional: Configure virtual consoles
+    echo
+    echo "══════════════════════════════════════════════════════════════"
+    echo "   OPTIONAL: Virtual Console Access                           "
+    echo "══════════════════════════════════════════════════════════════"
+    echo
+    echo "Virtual consoles (Ctrl+Alt+F1-F8) allow manual terminal login"
+    echo "for troubleshooting. This is useful but less secure."
+    echo
+    echo "Current status: ENABLED (default)"
+    echo
+    read -r -p "Keep virtual consoles enabled? (y/n): " keep_consoles
+    if [[ ! "$keep_consoles" =~ ^[Yy]$ ]]; then
+        echo
+        echo "Disabling virtual consoles for security..."
+        for i in {1..8}; do
+            sudo systemctl mask getty@tty$i.service 2>/dev/null || true
+        done
+        sudo systemctl daemon-reload
+        log_success "Virtual consoles disabled"
+        echo
+        echo "You can re-enable them later from Advanced menu (option 7)"
+    else
+        log_info "Virtual consoles remain enabled (Ctrl+Alt+F1-F8)"
+    fi
+
+    echo
+    echo "[27/27] Installation complete!"
+    echo
     echo "Next steps:"
     echo "  • Rerun this script to configure addons"
     echo "  • Reboot to start the kiosk"
@@ -8957,12 +9189,13 @@ advanced_menu() {
         echo "  4. Audio Diagnostics"
         echo "  5. Fix Squeezelite Audio"
         echo "  6. Factory Reset Config"
+        echo "  7. Virtual Consoles (Ctrl+Alt+F1-F8)"
         echo "  9. Emergency Hotspot"
         echo " 10. Network Test"
         echo "  0. Return"
         echo
         read -r -p "Choose [0-10]: " choice
-        
+
         case "$choice" in
             1) manual_electron_update ;;
             2) system_diagnostics ;;
@@ -8970,6 +9203,7 @@ advanced_menu() {
             4) audio_diagnostics ;;
             5) fix_squeezelite_audio ;;
             6) factory_reset ;;
+            7) configure_virtual_consoles ;;
             9) configure_emergency_hotspot ;;
             10) network_test ;;
             0) return ;;
