@@ -5307,12 +5307,10 @@ function createWindow(){
     const viewIndex=tabIndexToViewIndex[tabIndex];
     if(viewIndex!==undefined&&viewIndex>=0&&viewIndex<views.length){
       console.log('[NAV] Switching to view index '+viewIndex);
-      manualNavigationMode=true;
       currentIndex=viewIndex;
       attachView(currentIndex);
       markActivity();
-      inactivityExtensionUntil=0;
-      console.log('[NAV] Navigation complete → manualNavigationMode=TRUE');
+      console.log('[NAV] Navigation complete, rotation continues');
     }else{
       console.error('[NAV] Invalid view index:',viewIndex);
     }
