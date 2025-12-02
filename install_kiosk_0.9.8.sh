@@ -5283,7 +5283,20 @@ function createWindow(){
   });
 
   ipcMain.on('get-config',(event)=>{
-    event.sender.send('config-data',config);
+    try{
+      if(fs.existsSync(CONFIG_FILE)){
+        const data=fs.readFileSync(CONFIG_FILE,'utf8');
+        const config=JSON.parse(data);
+        event.sender.send('config-data',config);
+        console.log('[NAV] Sent config data to renderer');
+      }else{
+        console.error('[NAV] Config file not found');
+        event.sender.send('config-data',{tabs:[]});
+      }
+    }catch(err){
+      console.error('[NAV] Error reading config:',err);
+      event.sender.send('config-data',{tabs:[]});
+    }
   });
 
   ipcMain.on('navigate-to-tab',(event,tabIndex)=>{
