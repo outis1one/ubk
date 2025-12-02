@@ -1,8 +1,8 @@
 # Ubuntu Based Kiosk (UBK)
 
-**Current Version:** 0.9.7-2 (check script header for latest version)  
-**Built with Claude Sonnet 4/.5 AI assistance**  
-**License:** GPL v3 - Keep derivatives open source  
+**Current Version:** 0.9.7-3 (check script header for latest version)
+**Built with Claude Sonnet 4/.5 AI assistance**
+**License:** GPL v3 - Keep derivatives open source
 **Repository:** https://github.com/outis1one/ubk/
 
 ---
@@ -47,9 +47,9 @@ Home/office kiosk for reusing old hardware, displaying:
 # Enable SSH during installation
 
 # Download and run installer
-wget https://github.com/outis1one/ubk/raw/main/install_kiosk_0.9.7-2.sh
-chmod +x install_kiosk_0.9.7-2.sh
-./install_kiosk_0.9.7-2.sh
+wget https://github.com/outis1one/ubk/raw/main/install_kiosk_0.9.7-3.sh
+chmod +x install_kiosk_0.9.7-3.sh
+./install_kiosk_0.9.7-3.sh
 ```
 
 The installer will guide you through configuration during setup.
@@ -383,7 +383,7 @@ smb://WORKGROUP/COMPUTER/PrinterName
 
 ```bash
 # Run installer script again to access menu
-./install_kiosk_0.9.7-2.sh
+./install_kiosk_0.9.7-3.sh
 
 # Menu structure:
 # 1. Core Settings - Sites, WiFi, schedules, passwords, full reinstall, complete uninstall
@@ -687,7 +687,7 @@ Full system cleanup that removes all kiosk components and restores the system to
 **Access:**
 ```bash
 # Core Settings menu → option 11
-./install_kiosk_0.9.7-2.sh
+./install_kiosk_0.9.7-3.sh
 # Choose: Core Settings → Complete Uninstall
 ```
 
@@ -849,7 +849,7 @@ See the LICENSE file in the repository for full terms.
 
 ## Project Status & Future Plans
 
-**Current Version:** 0.9.7 - Site-Specific Extension Fix
+**Current Version:** 0.9.7-3 - Install Improvements & Management Features
 
 **Planned Features:**
 - Web-based GUI configuration interface
@@ -892,4 +892,4 @@ Special thanks to the maintainers of all upstream projects that make UBK possibl
 ---
 
 *Last Updated: December 2, 2024*
-*Version: 0.9.7-2*
+*Version: 0.9.7-3*
