@@ -5306,8 +5306,13 @@ function createWindow(){
     }
     const viewIndex=tabIndexToViewIndex[tabIndex];
     if(viewIndex!==undefined&&viewIndex>=0&&viewIndex<views.length){
+      console.log('[NAV] Switching to view index '+viewIndex);
       currentIndex=viewIndex;
-      showView(currentIndex);
+      attachView(currentIndex);
+      markActivity();
+      console.log('[NAV] Navigation complete, rotation continues');
+    }else{
+      console.error('[NAV] Invalid view index:',viewIndex);
     }
   });
   
@@ -6192,10 +6197,13 @@ let keyboardVisible=false;
 let keyboardIcon=null;
 let navButtonEnabled=true;
 let navButton=null;
+let navButtonShown=false;
+let navButtonHideTimer=null;
 let navMenu=null;
 let navMenuVisible=false;
 let navMenuTimer=null;
 const NAV_MENU_TIMEOUT=30000; // 30 seconds
+const NAV_BUTTON_HIDE_DELAY=5000; // Hide after 5 seconds of inactivity
 
 // Listen for pause button visibility control from main process
 // CRITICAL: This must be outside DOMContentLoaded so it doesn't reset on page load
@@ -6362,11 +6370,33 @@ window.addEventListener('DOMContentLoaded',()=>{
   function showNavButton(){
     if(!navButtonEnabled)return;
     if(!navButton)createNavButton();
-    if(navButton)navButton.style.display='flex';
+    if(navButton){
+      navButton.style.display='flex';
+      navButtonShown=true;
+    }
+
+    // Clear existing hide timer
+    if(navButtonHideTimer){
+      clearTimeout(navButtonHideTimer);
+      navButtonHideTimer=null;
+    }
+
+    // Set new hide timer - button will auto-hide after inactivity
+    navButtonHideTimer=setTimeout(()=>{
+      console.log('[NAV-BTN] Auto-hiding after '+NAV_BUTTON_HIDE_DELAY+'ms inactivity');
+      hideNavButton();
+    },NAV_BUTTON_HIDE_DELAY);
   }
 
   function hideNavButton(){
-    if(navButton)navButton.style.display='none';
+    if(navButtonHideTimer){
+      clearTimeout(navButtonHideTimer);
+      navButtonHideTimer=null;
+    }
+    if(navButton){
+      navButton.style.display='none';
+      navButtonShown=false;
+    }
   }
 
   function createNavMenu(){
@@ -6384,7 +6414,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     const content=document.createElement('div');
     content.style.cssText=`
       position:relative;background:rgba(44,62,80,0.98);border-radius:20px;padding:40px;
-      max-width:90%;max-height:90%;overflow-y:auto;
+      max-width:90%;max-height:90%;overflow:hidden;
       box-shadow:0 10px 40px rgba(0,0,0,0.5);
     `;
 
@@ -6405,20 +6435,20 @@ window.addEventListener('DOMContentLoaded',()=>{
     content.appendChild(closeBtn);
 
     const columns=document.createElement('div');
-    columns.style.cssText='display:flex;gap:40px;margin-top:20px;';
+    columns.style.cssText='display:flex;gap:40px;margin-top:20px;max-height:70vh;';
 
-    // Column 1: Sites
+    // Column 1: Sites (scrollable)
     const sitesCol=document.createElement('div');
-    sitesCol.style.cssText='flex:1;min-width:300px;';
+    sitesCol.style.cssText='flex:1;min-width:300px;display:flex;flex-direction:column;';
     sitesCol.innerHTML='<h2 style="color:white;margin-bottom:20px;">Sites</h2>';
     const sitesList=document.createElement('div');
     sitesList.id='nav-sites-list';
-    sitesList.style.cssText='display:flex;flex-direction:column;gap:10px;';
+    sitesList.style.cssText='display:flex;flex-direction:column;gap:10px;overflow-y:auto;padding-right:10px;';
     sitesCol.appendChild(sitesList);
 
-    // Column 2: Gesture Cheat Sheet
+    // Column 2: Gesture Cheat Sheet (fixed, no scroll)
     const cheatCol=document.createElement('div');
-    cheatCol.style.cssText='flex:1;min-width:300px;';
+    cheatCol.style.cssText='flex:1;min-width:300px;overflow-y:hidden;';
     cheatCol.innerHTML=`
       <h2 style="color:white;margin-bottom:20px;">Touch Gestures</h2>
       <div style="color:#ecf0f1;line-height:1.8;font-size:16px;">
@@ -6571,18 +6601,30 @@ window.addEventListener('DOMContentLoaded',()=>{
         const displayName=tab.name||tab.url;
         siteBtn.textContent=displayName;
         siteBtn.style.cssText=`
-          padding:15px 20px;background:rgba(52,152,219,0.8);color:white;
+          padding:15px 20px;background:rgba(52,152,219,0.7);color:white;
           border-radius:10px;cursor:pointer;font-size:18px;
-          transition:all 0.2s;border:2px solid transparent;
-          user-select:none;
+          transition:all 0.3s;border:3px solid rgba(52,152,219,0.9);
+          user-select:none;font-weight:normal;
+          box-shadow:0 2px 8px rgba(0,0,0,0.2);
         `;
         siteBtn.addEventListener('mouseenter',()=>{
-          siteBtn.style.background='rgba(52,152,219,1)';
-          siteBtn.style.borderColor='rgba(255,255,255,0.5)';
+          siteBtn.style.background='rgba(41,128,185,1)';
+          siteBtn.style.borderColor='rgba(255,255,255,0.9)';
+          siteBtn.style.fontWeight='bold';
+          siteBtn.style.transform='translateY(-2px)';
+          siteBtn.style.boxShadow='0 4px 12px rgba(0,0,0,0.4)';
         });
         siteBtn.addEventListener('mouseleave',()=>{
-          siteBtn.style.background='rgba(52,152,219,0.8)';
-          siteBtn.style.borderColor='transparent';
+          siteBtn.style.background='rgba(52,152,219,0.7)';
+          siteBtn.style.borderColor='rgba(52,152,219,0.9)';
+          siteBtn.style.fontWeight='normal';
+          siteBtn.style.transform='translateY(0)';
+          siteBtn.style.boxShadow='0 2px 8px rgba(0,0,0,0.2)';
+        });
+        siteBtn.addEventListener('mousedown',()=>{
+          siteBtn.style.background='rgba(31,97,141,1)';
+          siteBtn.style.transform='translateY(0)';
+          siteBtn.style.boxShadow='0 1px 4px rgba(0,0,0,0.3)';
         });
         siteBtn.addEventListener('click',(e)=>{
           e.preventDefault();
