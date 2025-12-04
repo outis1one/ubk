@@ -4672,6 +4672,18 @@ function attachView(i){
   if(!mainWindow||!views[i]||showingHidden)return;
 
   currentIndex=i;
+
+  // Remove all other views to prevent bleeding through
+  views.forEach((view,idx)=>{
+    if(idx!==i&&mainWindow&&!mainWindow.isDestroyed()){
+      try{
+        mainWindow.removeBrowserView(view);
+      }catch(e){
+        // View may not be attached, ignore
+      }
+    }
+  });
+
   try{
     mainWindow.addBrowserView(views[i]);
   }catch(e){
@@ -4680,6 +4692,11 @@ function attachView(i){
   mainWindow.setTopBrowserView(views[i]);
   const[w,h]=mainWindow.getContentSize();
   views[i].setBounds({x:0,y:0,width:w,height:h});
+
+  // Force repaint to ensure proper rendering
+  if(views[i].webContents){
+    views[i].webContents.invalidate();
+  }
   
   const tabIdx=viewIndexToTabIndex(i);
   if(tabIdx>=0&&tabs[tabIdx]){
@@ -5069,14 +5086,19 @@ function showPowerMenu(){
   let localIP='No IP';
   let vpnIP='';
 
-  // Get local IP
+  // Get local IP (exclude VPN interfaces)
   for(const name of Object.keys(ipAddress)){
+    // Skip VPN interfaces
+    if(name.startsWith('tailscale')||name.startsWith('wg')||name.startsWith('netbird')||name.startsWith('tun')||name.startsWith('wt')){
+      continue;
+    }
     for(const net of ipAddress[name]){
       if(net.family==='IPv4'&&!net.internal){
         localIP=net.address;
         break;
       }
     }
+    if(localIP!=='No IP')break;
   }
 
   // Get VPN IPs (Tailscale, WireGuard, Netbird)
@@ -6531,6 +6553,14 @@ window.addEventListener('DOMContentLoaded',()=>{
       navMenu.style.display='flex';
       navMenuVisible=true;
 
+      // Force reflow and repaint to ensure proper rendering
+      navMenu.offsetHeight;
+      navMenu.style.opacity='0';
+      setTimeout(()=>{
+        navMenu.style.transition='opacity 0.15s ease-in';
+        navMenu.style.opacity='1';
+      },10);
+
       // Set 30-second auto-dismiss timer
       if(navMenuTimer){
         clearTimeout(navMenuTimer);
@@ -6555,6 +6585,8 @@ window.addEventListener('DOMContentLoaded',()=>{
       }
       if(navMenu){
         navMenu.style.display='none';
+        navMenu.style.opacity='1';
+        navMenu.style.transition='';
       }
       navMenuVisible=false;
       console.log('[NAV] Menu hidden');
