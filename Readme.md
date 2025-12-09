@@ -43,6 +43,7 @@ Home/office kiosk for reusing old hardware, displaying:
 
 ```bash
 # Install Ubuntu 24.04 Server
+# ***Do not use "kiosk" as a user name when installing, the script creates a restricted user named kiosk and the script will not install if the sudo user/user name when setting up the system is "kiosk".***
 # Configure WiFi if no ethernet available
 # Enable SSH during installation
 
@@ -83,9 +84,9 @@ The installer will guide you through configuration during setup.
 - **Special characters** via shift keys
 - Works alongside physical keyboard
 
-### Password Protection & Lockout
+### Password Protection & Lockout (all are optional)
 - **Session lockout** after configured inactivity
-- **Scheduled lockout** at specific time daily
+- **Scheduled lockout** at specific time daily 
 - **Display wake lockout** - Require password after display schedule
 - **Boot password** option - Require password on system startup
 - **Full screen blocking** during lockout (no content visible)
@@ -95,7 +96,7 @@ The installer will guide you through configuration during setup.
 - **Same-origin** - Links within same domain only (recommended)
 - **Open** - Unrestricted browsing (trusted environments only)
 
-### Scheduling System
+### Scheduling System (all are optional)
 - **Power schedule** - Auto-shutdown and RTC wake (hardware dependent)
 - **Display schedule** - Turn display off/on at specific times
 - **Quiet hours** - Mute audio or stop Squeezelite during hours
@@ -131,7 +132,7 @@ The installer will guide you through configuration during setup.
 
 ### Advanced
 - **Emergency WiFi Hotspot** - Auto-starts if no internet after boot (configurable during install)
-- **Virtual Console Access** - Ctrl+Alt+F1-F8 terminal login (configurable during install)
+- **Virtual Console Access** - Ctrl+Alt+F1-F8 terminal login (can enable/disable during install)
 - **Complete Uninstall** - Full system cleanup and kiosk removal
 - **SSH remote access** - For configuration and troubleshooting
 
