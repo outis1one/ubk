@@ -410,7 +410,7 @@ The Easy Asterisk Intercom addon provides voice communication capabilities to yo
 ```bash
 ./install_kiosk_v0.9.9.sh
 # Select: 2) Manage Addons
-# Then: 2) Install/Update Intercom (Easy Asterisk)
+# Then: 1) Install/Update Intercom (Easy Asterisk)
 ```
 
 **Features:**
@@ -439,7 +439,7 @@ systemctl restart asterisk
 
 # Configure intercom
 ./install_kiosk_v0.9.9.sh
-# Select: 2) Manage Addons → 6) Configure Intercom
+# Select: 2) Manage Addons → 4) Configure Intercom
 ```
 
 **Installation location:**
