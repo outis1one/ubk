@@ -8967,7 +8967,8 @@ get_latest_easy_asterisk_version() {
     fi
 
     # Extract easy-asterisk-v*.sh files and find the latest version
-    local latest_version=$(echo "$files_json" | grep -oP 'easy-asterisk-v\K[0-9]+\.[0-9]+\.[0-9]+(?=\.sh)' | sort -V | tail -1)
+    # Support both 3-part (1.2.3) and 4-part (0.9.8.7) version numbers
+    local latest_version=$(echo "$files_json" | grep -oP 'easy-asterisk-v\K[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?(?=\.sh)' | sort -V | tail -1)
 
     if [ -z "$latest_version" ]; then
         return 1
