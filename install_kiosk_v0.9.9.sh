@@ -9169,12 +9169,14 @@ addon_easy_asterisk_intercom() {
         echo "Installation directory: $EASY_ASTERISK_INSTALL_DIR"
         echo "Version: v${latest_version}"
 
-        if [ -n "$installed_version" ] && [ "$installed_version" != "$latest_version" ]; then
+        if [ -n "${installed_version:-}" ] && [ "$installed_version" != "$latest_version" ]; then
             log_success "Successfully updated from v${installed_version} to v${latest_version}"
             echo "Your configurations have been preserved"
         fi
 
-        echo
+        echo ""
+        echo "Finalizing installation..."
+
         # Ensure Asterisk service is enabled and running (with timeout protection)
         echo "Checking Asterisk service status..."
 
