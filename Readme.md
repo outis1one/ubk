@@ -48,9 +48,9 @@ Home/office kiosk for reusing old hardware, displaying:
 # Enable SSH during installation
 
 # Download and run installer
-wget https://github.com/outis1one/ubk/raw/main/install_kiosk_v0.9.8.sh
-chmod +x install_kiosk_v0.9.8.sh
-./install_kiosk_v0.9.8.sh
+wget https://github.com/outis1one/ubk/raw/main/install_kiosk_v0.9.9.sh
+chmod +x install_kiosk_v0.9.9.sh
+./install_kiosk_v0.9.9.sh
 ```
 
 The installer will guide you through configuration during setup.
@@ -393,7 +393,7 @@ smb://WORKGROUP/COMPUTER/PrinterName
 
 ```bash
 # Run installer script again to access menu
-./install_kiosk_v0.9.8.sh
+./install_kiosk_v0.9.9.sh
 
 # Menu structure:
 # 1. Core Settings - Sites, WiFi, schedules, passwords, full reinstall, complete uninstall
@@ -408,7 +408,7 @@ The Easy Asterisk Intercom addon provides voice communication capabilities to yo
 
 **Access the addon menu:**
 ```bash
-./install_kiosk_v0.9.8.sh
+./install_kiosk_v0.9.9.sh
 # Select: 2) Addons
 # Then: 4) Easy Asterisk Intercom
 ```
@@ -438,7 +438,7 @@ asterisk -rvvv
 systemctl restart asterisk
 
 # Configure intercom (rerun installation to update)
-./install_kiosk_v0.9.8.sh
+./install_kiosk_v0.9.9.sh
 # Select: 2) Addons → 4) Easy Asterisk Intercom
 ```
 
@@ -972,13 +972,14 @@ See the LICENSE file in the repository for full terms.
 
 ## Project Status & Future Plans
 
-**Current Version:** 0.9.8 - Named Sites & Easy Asterisk Intercom
+**Current Version:** 0.9.9 - Easy Asterisk Intercom Integration
 
-**Recent Updates (v0.9.8):**
+**Recent Updates (v0.9.9):**
 - Easy Asterisk Intercom addon with automatic updates
 - Smart version detection and configuration preservation
-- Named websites feature for user-friendly site identification
-- Navigation menu with key icon
+- Support for 4-part version numbers (e.g., 0.9.8.7)
+- Fixed sudo handling for Easy Asterisk installation
+- Based on v0.9.8 stable release
 
 **Planned Features:**
 - Web-based GUI configuration interface
@@ -1019,5 +1020,5 @@ Special thanks to the maintainers of all upstream projects that make UBK possibl
 
 ---
 
-*Last Updated: December 10, 2025*
-*Version: 0.9.8*
+*Last Updated: December 11, 2025*
+*Version: 0.9.9*
