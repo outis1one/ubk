@@ -137,82 +137,7 @@ install_addon() {
 }
 
 ################################################################################
-# Easy Asterisk Integration
-################################################################################
-
-install_easy_asterisk() {
-    log_info "Installing Easy Asterisk addon..."
-    
-    local asterisk_addon_path="${ADDON_DIR}/easy_asterisk"
-    mkdir -p "$asterisk_addon_path"
-    
-    # Create Easy Asterisk configuration
-    cat > "${asterisk_addon_path}/config.conf" <<'EOF'
-[easy_asterisk]
-enabled = true
-version = 1.0
-description = Easy Asterisk Integration for UBK Kiosk
-
-[asterisk_server]
-host = localhost
-port = 5060
-protocol = SIP
-
-[features]
-call_forwarding = true
-voicemail_integration = true
-conference_support = true
-caller_id_customization = true
-
-[security]
-enable_auth = true
-enable_encryption = false
-allowed_ips = localhost,127.0.0.1
-
-[logging]
-level = INFO
-output_file = /var/log/ubk_asterisk.log
-EOF
-
-    # Create initialization script
-    cat > "${asterisk_addon_path}/init.sh" <<'EOF'
-#!/bin/bash
-
-ADDON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="${ADDON_DIR}/config.conf"
-
-echo "[Easy Asterisk] Initializing addon..."
-
-# Check if Asterisk is installed
-if ! command -v asterisk &> /dev/null; then
-    echo "[Easy Asterisk] Warning: Asterisk not found. Installing..."
-    sudo apt-get update
-    sudo apt-get install -y asterisk asterisk-dev
-fi
-
-# Load configuration
-if [ -f "$CONFIG_FILE" ]; then
-    source <(grep -E '^\[|^[a-zA-Z_]' "$CONFIG_FILE")
-    echo "[Easy Asterisk] Configuration loaded"
-fi
-
-# Initialize Asterisk integration
-echo "[Easy Asterisk] Starting Asterisk daemon..."
-sudo systemctl restart asterisk || true
-
-echo "[Easy Asterisk] Addon initialized successfully"
-EOF
-
-    chmod +x "${asterisk_addon_path}/init.sh"
-    
-    # Run initialization
-    bash "${asterisk_addon_path}/init.sh"
-    
-    log_success "Easy Asterisk addon installed"
-}
-
-################################################################################
-# Intercom Integration (Easy Asterisk)
+# Intercom Integration (Easy Asterisk from GitHub)
 ################################################################################
 
 # GitHub repository details
@@ -498,47 +423,39 @@ display_addon_menu() {
         echo -e "${BLUE}================================${NC}"
         echo -e "${BLUE}   UBK Kiosk v${SCRIPT_VERSION} Addon Menu${NC}"
         echo -e "${BLUE}================================${NC}"
-        echo "1) Install Easy Asterisk"
-        echo "2) Install/Update Intercom (Easy Asterisk)"
-        echo "3) Install Custom Addon"
-        echo "4) List Installed Addons"
-        echo "5) Configure Easy Asterisk"
-        echo "6) Configure Intercom"
-        echo "7) View Addon Logs"
-        echo "8) Return to Main Menu"
-        echo "9) Exit"
+        echo "1) Install/Update Intercom (Easy Asterisk)"
+        echo "2) Install Custom Addon"
+        echo "3) List Installed Addons"
+        echo "4) Configure Intercom"
+        echo "5) View Addon Logs"
+        echo "6) Return to Main Menu"
+        echo "7) Exit"
         echo -e "${BLUE}================================${NC}"
-        
+
         read -p "Select option: " addon_choice
-        
+
         case $addon_choice in
             1)
-                install_easy_asterisk
-                ;;
-            2)
                 install_intercom
                 ;;
-            3)
+            2)
                 read -p "Enter addon name: " addon_name
                 read -p "Enter addon URL (leave blank for local): " addon_url
                 install_addon "$addon_name" "$addon_url"
                 ;;
-            4)
+            3)
                 list_addons
                 ;;
-            5)
-                configure_easy_asterisk
-                ;;
-            6)
+            4)
                 configure_intercom
                 ;;
-            7)
+            5)
                 view_addon_logs
                 ;;
-            8)
+            6)
                 return
                 ;;
-            9)
+            7)
                 log_info "Exiting..."
                 exit 0
                 ;;
@@ -571,33 +488,11 @@ list_addons() {
     echo ""
 }
 
-configure_easy_asterisk() {
-    local config_file="${ADDON_DIR}/easy_asterisk/config.conf"
-    
-    if [ ! -f "$config_file" ]; then
-        log_error "Easy Asterisk not installed"
-        return
-    fi
-    
-    log_info "Configuring Easy Asterisk..."
-    
-    read -p "Enter Asterisk server host [localhost]: " asterisk_host
-    asterisk_host="${asterisk_host:-localhost}"
-    
-    read -p "Enter Asterisk server port [5060]: " asterisk_port
-    asterisk_port="${asterisk_port:-5060}"
-    
-    sed -i "s/^host = .*/host = $asterisk_host/" "$config_file"
-    sed -i "s/^port = .*/port = $asterisk_port/" "$config_file"
-    
-    log_success "Easy Asterisk configuration updated"
-}
-
 configure_intercom() {
     # Check if Easy Asterisk is installed
     if [ ! -d "$EASY_ASTERISK_INSTALL_DIR" ]; then
         log_error "Easy Asterisk Intercom is not installed"
-        log_info "Please install it first using option 2 from the Addons menu"
+        log_info "Please install it first using option 1 from the Addons menu"
         return 1
     fi
 
