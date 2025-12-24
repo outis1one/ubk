@@ -1,7 +1,15 @@
 #!/bin/bash
 ################################################################################
-###   Ubuntu Based Kiosk (UBK) v0.9.9         ###
+###   Ubuntu Based Kiosk (UBK) v0.9.9.1       ###
 ################################################################################
+#
+# RELEASE v0.9.9.1 - Silent Upgrade & Power Button Fixes
+# - Silent upgrade: no user input required, extracts files from script
+# - Import now allows selecting backup by number instead of typing path
+# - Improved power button handler with better Electron process detection
+# - Power button now uses SIGUSR1 as primary method (more reliable)
+# - Upgrade automatically updates power button handler
+# - Added VPN configs (WireGuard, Netbird, Tailscale, OpenVPN) to backup
 #
 # RELEASE v0.9.9 - Settings Export/Import & Bug Fixes
 # - Added Export/Import All Settings feature (Advanced menu)
@@ -47,7 +55,7 @@ set -euo pipefail
 ### SECTION 1: CONSTANTS & GLOBALS
 ################################################################################
 
-SCRIPT_VERSION="0.9.9"
+SCRIPT_VERSION="0.9.9.1"
 KIOSK_USER="kiosk"
 BUILD_USER="${SUDO_USER:-$(whoami)}"
 KIOSK_HOME="/home/${KIOSK_USER}"
@@ -4010,7 +4018,7 @@ const path=require('path');
 const os=require('os');
 
 const CONFIG_FILE=path.join(__dirname,'config.json');
-const VERSION='0.9.9';
+const VERSION='0.9.9.1';
 
 let mainWindow,views=[],hiddenViews=[],tabs=[],currentIndex=0,showingHidden=false;
 let pinWindow=null,promptWindow=null,pauseWindow=null,htmlKeyboardWindow=null;
@@ -7188,58 +7196,80 @@ local kiosk_uid=$(id -u "$KIOSK_USER")
 sudo -u "$KIOSK_USER" tee "$KIOSK_HOME/trigger-power-menu.sh" > /dev/null <<PWREOF
 #!/bin/bash
 export DISPLAY=:0
+export XAUTHORITY=/home/kiosk/.Xauthority
 export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$kiosk_uid/bus
 
-logger "KIOSK: Power button pressed - triggering menu via multiple methods"
+logger "KIOSK: Power button pressed - triggering menu"
 
 # Give display time to be ready
 sleep 0.3
 
-# Method 1: Find Electron window by class and send keys
-ELECTRON_WINDOW=\$(xdotool search --class "electron" 2>/dev/null | head -1)
-if [ -n "\$ELECTRON_WINDOW" ]; then
-  logger "KIOSK: Found Electron window \$ELECTRON_WINDOW"
-  xdotool windowactivate --sync \$ELECTRON_WINDOW 2>/dev/null
-  sleep 0.2
-  xdotool key --window \$ELECTRON_WINDOW --clearmodifiers ctrl+alt+Delete 2>/dev/null
+# Find the Electron main process (the one running main.js)
+ELECTRON_PID=\$(pgrep -f "electron.*main\.js" 2>/dev/null | head -1)
+if [ -z "\$ELECTRON_PID" ]; then
+  ELECTRON_PID=\$(pgrep -f "/kiosk/node_modules/.bin/electron" 2>/dev/null | head -1)
+fi
+if [ -z "\$ELECTRON_PID" ]; then
+  ELECTRON_PID=\$(pgrep -u kiosk -f "electron" 2>/dev/null | head -1)
+fi
+
+logger "KIOSK: Found Electron PID: \$ELECTRON_PID"
+
+# Method 1: Send SIGUSR1 directly to Electron main process (most reliable)
+if [ -n "\$ELECTRON_PID" ]; then
+  logger "KIOSK: Sending SIGUSR1 to Electron PID \$ELECTRON_PID"
+  kill -USR1 \$ELECTRON_PID 2>/dev/null
   if [ \$? -eq 0 ]; then
-    logger "KIOSK: Power menu triggered via Method 1 (xdotool window)"
+    logger "KIOSK: Power menu triggered via SIGUSR1"
     exit 0
   fi
 fi
 
-# Method 2: Find window by PID
-NODE_PID=\$(pgrep -f "node.*electron" | head -1)
-if [ -n "\$NODE_PID" ]; then
-  WINDOW_BY_PID=\$(xdotool search --pid \$NODE_PID 2>/dev/null | head -1)
+# Method 2: Find window by multiple search patterns
+for pattern in "electron" "Electron" "kiosk"; do
+  WINDOW=\$(xdotool search --class "\$pattern" 2>/dev/null | head -1)
+  if [ -n "\$WINDOW" ]; then
+    logger "KIOSK: Found window \$WINDOW via pattern '\$pattern'"
+    xdotool windowactivate --sync \$WINDOW 2>/dev/null
+    sleep 0.2
+    xdotool key --window \$WINDOW --clearmodifiers ctrl+alt+Delete 2>/dev/null
+    if [ \$? -eq 0 ]; then
+      logger "KIOSK: Power menu triggered via xdotool (pattern: \$pattern)"
+      exit 0
+    fi
+  fi
+done
+
+# Method 3: Find window by PID
+if [ -n "\$ELECTRON_PID" ]; then
+  WINDOW_BY_PID=\$(xdotool search --pid \$ELECTRON_PID 2>/dev/null | head -1)
   if [ -n "\$WINDOW_BY_PID" ]; then
     logger "KIOSK: Found window by PID: \$WINDOW_BY_PID"
     xdotool windowactivate --sync \$WINDOW_BY_PID 2>/dev/null
     sleep 0.2
     xdotool key --window \$WINDOW_BY_PID --clearmodifiers ctrl+alt+Delete 2>/dev/null
     if [ \$? -eq 0 ]; then
-      logger "KIOSK: Power menu triggered via Method 2 (PID)"
+      logger "KIOSK: Power menu triggered via PID window"
       exit 0
     fi
   fi
 fi
 
-# Method 3: Direct key injection (no specific window)
+# Method 4: Direct key injection to focused window
 logger "KIOSK: Trying direct key injection"
 xdotool key --clearmodifiers ctrl+alt+Delete 2>/dev/null
 if [ \$? -eq 0 ]; then
-  logger "KIOSK: Power menu triggered via Method 3 (direct injection)"
+  logger "KIOSK: Power menu triggered via direct injection"
   exit 0
 fi
 
-# Method 4: Send SIGUSR1 to Node process
-if [ -n "\$NODE_PID" ]; then
-  logger "KIOSK: Sending SIGUSR1 to Node PID \$NODE_PID"
-  kill -USR1 \$NODE_PID 2>/dev/null
-  exit 0
+# Method 5: Use ydotool if available (for Wayland compatibility)
+if command -v ydotool &>/dev/null; then
+  logger "KIOSK: Trying ydotool"
+  ydotool key 29:1 56:1 111:1 111:0 56:0 29:0 2>/dev/null  # Ctrl+Alt+Del
 fi
 
-logger "KIOSK: All power button trigger methods failed"
+logger "KIOSK: All power button trigger methods completed"
 PWREOF
 
 sudo chmod +x "$KIOSK_HOME/trigger-power-menu.sh"
@@ -10257,21 +10287,55 @@ import_settings() {
     else
         home_dir="/tmp"
     fi
-    local backups=$(ls -1 "$home_dir"/kiosk-backup-*.tar.gz 2>/dev/null | head -10)
 
-    if [[ -n "$backups" ]]; then
+    # Build array of backup files
+    local -a backup_array=()
+    while IFS= read -r file; do
+        [[ -n "$file" ]] && backup_array+=("$file")
+    done < <(ls -1t "$home_dir"/kiosk-backup-*.tar.gz 2>/dev/null | head -10)
+
+    local import_file=""
+
+    if [[ ${#backup_array[@]} -gt 0 ]]; then
         echo "Found backup files in $home_dir:"
-        echo "$backups" | nl
         echo
-    fi
+        local i=1
+        for file in "${backup_array[@]}"; do
+            local fname=$(basename "$file")
+            local fsize=$(du -h "$file" 2>/dev/null | cut -f1)
+            echo "  $i) $fname ($fsize)"
+            i=$((i + 1))
+        done
+        echo
+        read -r -p "Enter number (1-${#backup_array[@]}) or full path: " selection
 
-    read -r -p "Path to backup file (.tar.gz): " import_file
+        # Check if it's a number
+        if [[ "$selection" =~ ^[0-9]+$ ]]; then
+            if [[ "$selection" -ge 1 && "$selection" -le ${#backup_array[@]} ]]; then
+                import_file="${backup_array[$((selection - 1))]}"
+            else
+                log_error "Invalid selection: $selection"
+                pause
+                return
+            fi
+        else
+            # User entered a path
+            import_file="$selection"
+        fi
+    else
+        echo "No backup files found in $home_dir"
+        echo
+        read -r -p "Enter full path to backup file (.tar.gz): " import_file
+    fi
 
     if [[ ! -f "$import_file" ]]; then
         log_error "File not found: $import_file"
         pause
         return
     fi
+
+    echo
+    echo "Selected: $(basename "$import_file")"
 
     echo
     read -r -p "This will overwrite current settings. Continue? (yes/no): " confirm
@@ -10432,7 +10496,7 @@ import_settings() {
 upgrade_kiosk() {
     clear
     echo "══════════════════════════════════════════════════════════"
-    echo "   UPGRADE KIOSK APP (v$SCRIPT_VERSION)                    "
+    echo "   SILENT UPGRADE KIOSK APP (v$SCRIPT_VERSION)            "
     echo "══════════════════════════════════════════════════════════"
     echo
     echo "This will upgrade the kiosk application while preserving:"
@@ -10441,48 +10505,29 @@ upgrade_kiosk() {
     echo "  • Password settings"
     echo "  • Addon configurations (Squeezelite, VNC, VPN, etc.)"
     echo
-    echo "Process:"
-    echo "  1. Auto-export all settings"
-    echo "  2. Reinstall application files"
-    echo "  3. Auto-import all settings"
+    echo "NO user input is required - upgrade runs automatically."
     echo
     read -r -p "Continue with upgrade? (yes/no): " confirm
     [[ "$confirm" != "yes" ]] && return
 
-    local backup_file="/tmp/kiosk-upgrade-backup-$$.tar.gz"
+    # Get the path of this script for extracting heredocs
+    local script_path
+    script_path="$(readlink -f "${BASH_SOURCE[0]}")"
 
     echo
-    echo "[1/4] Exporting current settings..."
-
-    # Create backup directory
-    local export_dir="/tmp/kiosk-upgrade-export-$$"
-    mkdir -p "$export_dir"
-
-    # Export config
-    [[ -f "$CONFIG_PATH" ]] && sudo cp "$CONFIG_PATH" "$export_dir/config.json"
-
-    # Export timers
-    mkdir -p "$export_dir/timers"
-    for timer in kiosk-shutdown kiosk-display-off kiosk-display-on kiosk-quiet-start kiosk-quiet-end kiosk-electron-reload; do
-        [[ -f "/etc/systemd/system/${timer}.timer" ]] && sudo cp "/etc/systemd/system/${timer}.timer" "$export_dir/timers/"
-        [[ -f "/etc/systemd/system/${timer}.service" ]] && sudo cp "/etc/systemd/system/${timer}.service" "$export_dir/timers/"
-    done
-
-    # Export other configs
-    [[ -f /usr/local/bin/squeezelite-start.sh ]] && sudo cp /usr/local/bin/squeezelite-start.sh "$export_dir/"
-    [[ -f /usr/local/bin/kiosk-quiet-start.sh ]] && sudo cp /usr/local/bin/kiosk-quiet-start.sh "$export_dir/"
-    [[ -f /usr/local/bin/kiosk-quiet-end.sh ]] && sudo cp /usr/local/bin/kiosk-quiet-end.sh "$export_dir/"
-
-    # Create backup archive
-    tar -czf "$backup_file" -C /tmp "$(basename "$export_dir")" 2>/dev/null
-    rm -rf "$export_dir"
-    log_success "Settings backed up"
-
-    echo "[2/4] Stopping kiosk and removing app files..."
+    echo "[1/6] Stopping kiosk service..."
     sudo systemctl stop kiosk 2>/dev/null || true
     sleep 1
+    log_success "Kiosk stopped"
 
-    # Remove app files but NOT the whole directory
+    echo "[2/6] Backing up config.json..."
+    local config_backup="/tmp/kiosk-config-backup-$$.json"
+    if [[ -f "$CONFIG_PATH" ]]; then
+        sudo cp "$CONFIG_PATH" "$config_backup"
+        log_success "Config backed up"
+    fi
+
+    echo "[3/6] Removing old app files..."
     sudo rm -f "$KIOSK_DIR/main.js"
     sudo rm -f "$KIOSK_DIR/preload.js"
     sudo rm -f "$KIOSK_DIR/keyboard.html"
@@ -10490,70 +10535,167 @@ upgrade_kiosk() {
     sudo rm -f "$KIOSK_DIR/pause-dialog.html"
     sudo rm -f "$KIOSK_DIR/pin-entry.html"
     sudo rm -f "$KIOSK_DIR/inactivity-prompt-extended.html"
-    sudo rm -f "$KIOSK_DIR/lockout.html"
     sudo rm -rf "$KIOSK_DIR/node_modules"
     sudo rm -f "$KIOSK_DIR/package-lock.json"
+    log_success "Old files removed"
 
-    echo "[3/4] Reinstalling application..."
-    echo
-    echo "The installer will now run. When prompted for configuration,"
-    echo "just press Enter to accept defaults - your settings will be"
-    echo "restored automatically afterward."
-    echo
-    read -r -p "Press Enter to continue..."
+    echo "[4/6] Extracting new app files from script..."
 
-    # Run the install - it will detect existing partial install
-    first_time_install
+    # Extract main.js (between MAINJS markers)
+    sed -n "/^sudo.*tee.*main\.js.*<<'MAINJS'$/,/^MAINJS$/p" "$script_path" | tail -n +2 | head -n -1 | sudo -u "$KIOSK_USER" tee "$KIOSK_DIR/main.js" > /dev/null
+    [[ -s "$KIOSK_DIR/main.js" ]] && echo "  ✓ main.js" || echo "  ✗ main.js failed"
 
-    echo "[4/4] Restoring settings..."
+    # Extract preload.js (first occurrence between PRELOAD markers)
+    sed -n "/^sudo.*tee.*preload\.js.*<<'PRELOAD'$/,/^PRELOAD$/p" "$script_path" | tail -n +2 | head -n -1 | sudo -u "$KIOSK_USER" tee "$KIOSK_DIR/preload.js" > /dev/null
+    [[ -s "$KIOSK_DIR/preload.js" ]] && echo "  ✓ preload.js" || echo "  ✗ preload.js failed"
 
-    # Extract and restore
-    local restore_dir="/tmp/kiosk-upgrade-restore-$$"
-    mkdir -p "$restore_dir"
-    tar -xzf "$backup_file" -C "$restore_dir" 2>/dev/null
+    # Extract keyboard.html (first occurrence between KBHTML markers)
+    sed -n "/^sudo.*tee.*keyboard\.html.*<<'KBHTML'$/,/^KBHTML$/p" "$script_path" | tail -n +2 | head -n -1 | sudo -u "$KIOSK_USER" tee "$KIOSK_DIR/keyboard.html" > /dev/null
+    [[ -s "$KIOSK_DIR/keyboard.html" ]] && echo "  ✓ keyboard.html" || echo "  ✗ keyboard.html failed"
 
-    local backup_dir=$(find "$restore_dir" -maxdepth 1 -type d -name "kiosk-upgrade-*" | head -1)
-    [[ -z "$backup_dir" ]] && backup_dir="$restore_dir"
+    # Extract pause-dialog.html
+    sed -n "/^sudo.*tee.*pause-dialog\.html.*<<'PAUSEHTML'$/,/^PAUSEHTML$/p" "$script_path" | tail -n +2 | head -n -1 | sudo -u "$KIOSK_USER" tee "$KIOSK_DIR/pause-dialog.html" > /dev/null
+    [[ -s "$KIOSK_DIR/pause-dialog.html" ]] && echo "  ✓ pause-dialog.html" || echo "  ✗ pause-dialog.html failed"
+
+    # Extract pin-entry.html
+    sed -n "/^.*tee.*pin-entry\.html.*<<'PINHTML'$/,/^PINHTML$/p" "$script_path" | tail -n +2 | head -n -1 | sudo -u "$KIOSK_USER" tee "$KIOSK_DIR/pin-entry.html" > /dev/null
+    [[ -s "$KIOSK_DIR/pin-entry.html" ]] && echo "  ✓ pin-entry.html" || echo "  ✗ pin-entry.html failed"
+
+    # Extract inactivity-prompt-extended.html
+    sed -n "/^.*tee.*inactivity-prompt-extended\.html.*<<'INACTHTML'$/,/^INACTHTML$/p" "$script_path" | tail -n +2 | head -n -1 | sudo -u "$KIOSK_USER" tee "$KIOSK_DIR/inactivity-prompt-extended.html" > /dev/null
+    [[ -s "$KIOSK_DIR/inactivity-prompt-extended.html" ]] && echo "  ✓ inactivity-prompt-extended.html" || echo "  ✗ inactivity-prompt-extended.html failed"
+
+    # Extract keyboard-button.html
+    sed -n "/^.*tee.*keyboard-button\.html.*<<'BTNHTML'$/,/^BTNHTML$/p" "$script_path" | tail -n +2 | head -n -1 | sudo -u "$KIOSK_USER" tee "$KIOSK_DIR/keyboard-button.html" > /dev/null
+    [[ -s "$KIOSK_DIR/keyboard-button.html" ]] && echo "  ✓ keyboard-button.html" || echo "  ✗ keyboard-button.html failed"
+
+    # Extract package.json
+    sed -n "/^.*tee.*package\.json.*<<'PKGJSON'$/,/^PKGJSON$/p" "$script_path" | tail -n +2 | head -n -1 | sudo -u "$KIOSK_USER" tee "$KIOSK_DIR/package.json" > /dev/null
+    [[ -s "$KIOSK_DIR/package.json" ]] && echo "  ✓ package.json" || echo "  ✗ package.json failed"
+
+    # Set ownership
+    sudo chown -R "$KIOSK_USER:$KIOSK_USER" "$KIOSK_DIR"
+
+    echo "[5/6] Installing npm dependencies..."
+    if sudo -u "$KIOSK_USER" bash -lc "cd '$KIOSK_DIR' && npm install --unsafe-perm" 2>&1 | tail -5; then
+        log_success "npm install complete"
+    else
+        log_warning "npm install may have had issues"
+    fi
 
     # Restore config
-    if [[ -f "$backup_dir/config.json" ]]; then
-        sudo cp "$backup_dir/config.json" "$CONFIG_PATH"
+    if [[ -f "$config_backup" ]]; then
+        sudo cp "$config_backup" "$CONFIG_PATH"
         sudo chown "$KIOSK_USER:$KIOSK_USER" "$CONFIG_PATH"
-        log_success "Config restored"
+        rm -f "$config_backup"
     fi
 
-    # Restore timers
-    if [[ -d "$backup_dir/timers" ]]; then
-        for timer_file in "$backup_dir/timers"/*.timer; do
-            [[ -f "$timer_file" ]] || continue
-            sudo cp "$timer_file" /etc/systemd/system/
-        done
-        for service_file in "$backup_dir/timers"/*.service; do
-            [[ -f "$service_file" ]] || continue
-            sudo cp "$service_file" /etc/systemd/system/
-        done
-        sudo systemctl daemon-reload
-        log_success "Timers restored"
+    # Regenerate power button trigger script with latest fixes
+    echo "  Updating power button handler..."
+    local kiosk_uid
+    kiosk_uid=$(id -u "$KIOSK_USER")
+    sudo -u "$KIOSK_USER" tee "$KIOSK_HOME/trigger-power-menu.sh" > /dev/null <<PWREOF
+#!/bin/bash
+export DISPLAY=:0
+export XAUTHORITY=/home/kiosk/.Xauthority
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$kiosk_uid/bus
+
+logger "KIOSK: Power button pressed - triggering menu"
+sleep 0.3
+
+# Find the Electron main process
+ELECTRON_PID=\$(pgrep -f "electron.*main\.js" 2>/dev/null | head -1)
+if [ -z "\$ELECTRON_PID" ]; then
+  ELECTRON_PID=\$(pgrep -f "/kiosk/node_modules/.bin/electron" 2>/dev/null | head -1)
+fi
+if [ -z "\$ELECTRON_PID" ]; then
+  ELECTRON_PID=\$(pgrep -u kiosk -f "electron" 2>/dev/null | head -1)
+fi
+
+logger "KIOSK: Found Electron PID: \$ELECTRON_PID"
+
+# Method 1: Send SIGUSR1 directly to Electron main process (most reliable)
+if [ -n "\$ELECTRON_PID" ]; then
+  logger "KIOSK: Sending SIGUSR1 to Electron PID \$ELECTRON_PID"
+  kill -USR1 \$ELECTRON_PID 2>/dev/null
+  if [ \$? -eq 0 ]; then
+    logger "KIOSK: Power menu triggered via SIGUSR1"
+    exit 0
+  fi
+fi
+
+# Method 2: Find window by multiple search patterns
+for pattern in "electron" "Electron" "kiosk"; do
+  WINDOW=\$(xdotool search --class "\$pattern" 2>/dev/null | head -1)
+  if [ -n "\$WINDOW" ]; then
+    logger "KIOSK: Found window \$WINDOW via pattern '\$pattern'"
+    xdotool windowactivate --sync \$WINDOW 2>/dev/null
+    sleep 0.2
+    xdotool key --window \$WINDOW --clearmodifiers ctrl+alt+Delete 2>/dev/null
+    if [ \$? -eq 0 ]; then
+      logger "KIOSK: Power menu triggered via xdotool"
+      exit 0
     fi
+  fi
+done
 
-    # Restore other scripts
-    [[ -f "$backup_dir/squeezelite-start.sh" ]] && sudo cp "$backup_dir/squeezelite-start.sh" /usr/local/bin/ && sudo chmod +x /usr/local/bin/squeezelite-start.sh
-    [[ -f "$backup_dir/kiosk-quiet-start.sh" ]] && sudo cp "$backup_dir/kiosk-quiet-start.sh" /usr/local/bin/ && sudo chmod +x /usr/local/bin/kiosk-quiet-start.sh
-    [[ -f "$backup_dir/kiosk-quiet-end.sh" ]] && sudo cp "$backup_dir/kiosk-quiet-end.sh" /usr/local/bin/ && sudo chmod +x /usr/local/bin/kiosk-quiet-end.sh
+# Method 3: Direct key injection
+xdotool key --clearmodifiers ctrl+alt+Delete 2>/dev/null
+logger "KIOSK: All power button trigger methods completed"
+PWREOF
+    sudo chmod +x "$KIOSK_HOME/trigger-power-menu.sh"
+    sudo systemctl restart acpid 2>/dev/null || true
 
-    # Cleanup
-    rm -rf "$restore_dir" "$backup_file"
-
-    echo
-    echo "Restarting kiosk..."
+    echo "[6/6] Starting kiosk..."
     sudo systemctl restart kiosk
     sleep 3
 
+    echo
+    echo "══════════════════════════════════════════════════════════"
+    echo "   UPGRADE SUMMARY                                        "
+    echo "══════════════════════════════════════════════════════════"
+    echo
+    echo "Files updated:"
+    ls -la "$KIOSK_DIR"/*.js "$KIOSK_DIR"/*.html 2>/dev/null | awk '{print "  " $NF}'
+    echo
+
+    # Show preserved settings
+    echo "Preserved settings:"
+    if [[ -f "$CONFIG_PATH" ]]; then
+        local site_count
+        site_count=$(sudo -u "$KIOSK_USER" jq -r '.sites | length // 0' "$CONFIG_PATH" 2>/dev/null || echo "0")
+        echo "  • Sites configured: $site_count"
+
+        local pin_enabled
+        pin_enabled=$(sudo -u "$KIOSK_USER" jq -r '.pinEnabled // false' "$CONFIG_PATH" 2>/dev/null)
+        [[ "$pin_enabled" == "true" ]] && echo "  • PIN protection: enabled"
+
+        local rotation
+        rotation=$(sudo -u "$KIOSK_USER" jq -r '.rotationInterval // 0' "$CONFIG_PATH" 2>/dev/null)
+        [[ "$rotation" -gt 0 ]] && echo "  • Rotation interval: ${rotation}s"
+    fi
+
+    # Check timers
+    local timer_count=0
+    for timer in kiosk-shutdown kiosk-display-off kiosk-display-on kiosk-quiet-start kiosk-quiet-end; do
+        systemctl is-enabled "${timer}.timer" &>/dev/null && timer_count=$((timer_count + 1))
+    done
+    [[ $timer_count -gt 0 ]] && echo "  • Active schedule timers: $timer_count"
+
+    # Check addons
+    [[ -f /usr/local/bin/squeezelite-start.sh ]] && echo "  • Squeezelite: configured"
+    systemctl is-enabled x11vnc &>/dev/null && echo "  • VNC: enabled"
+    command -v netbird &>/dev/null && echo "  • Netbird VPN: installed"
+    command -v tailscale &>/dev/null && echo "  • Tailscale VPN: installed"
+    [[ -d /etc/wireguard ]] && ls /etc/wireguard/*.conf &>/dev/null && echo "  • WireGuard VPN: configured"
+
+    echo
     if systemctl is-active --quiet kiosk; then
-        log_success "Upgrade complete! Kiosk is running with your settings."
+        log_success "Upgrade complete! Kiosk is running."
     else
         log_warning "Kiosk may not have started. Check: journalctl -u kiosk -n 50"
     fi
+    echo
     pause
 }
 
