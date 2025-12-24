@@ -10207,21 +10207,33 @@ export_settings() {
 
     # Create archive
     local archive_name="kiosk-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
-    local home_dir=$(eval echo ~$SUDO_USER)
+    # Determine home directory - check SUDO_USER first, then USER, then fallback to /tmp
+    local home_dir=""
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        home_dir=$(eval echo "~$SUDO_USER")
+    elif [[ -n "${USER:-}" ]]; then
+        home_dir=$(eval echo "~$USER")
+    else
+        home_dir="/tmp"
+    fi
+    # Validate home_dir exists and is writable
+    if [[ ! -d "$home_dir" ]] || [[ ! -w "$home_dir" ]]; then
+        home_dir="/tmp"
+    fi
 
     # Fix permissions for tar
     sudo chmod -R 644 "$export_dir"/* 2>/dev/null
     sudo chmod -R 755 "$export_dir" 2>/dev/null
     find "$export_dir" -type d -exec chmod 755 {} \; 2>/dev/null
 
-    tar -czf "$home_dir/$archive_name" -C /tmp "$(basename $export_dir)"
+    tar -czf "$home_dir/$archive_name" -C /tmp "$(basename "$export_dir")"
     sudo rm -rf "$export_dir"
 
     echo
     log_success "Settings exported to: $home_dir/$archive_name"
     echo
     echo "To transfer this file, use:"
-    echo "  scp $USER@$(hostname -I | awk '{print $1}'):$home_dir/$archive_name ."
+    echo "  scp $(whoami)@$(hostname -I | awk '{print $1}'):$home_dir/$archive_name ."
     echo
     pause
 }
@@ -10236,8 +10248,15 @@ import_settings() {
     echo "Current settings will be OVERWRITTEN."
     echo
 
-    # List available backups
-    local home_dir=$(eval echo ~$SUDO_USER)
+    # List available backups - determine home directory
+    local home_dir=""
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        home_dir=$(eval echo "~$SUDO_USER")
+    elif [[ -n "${USER:-}" ]]; then
+        home_dir=$(eval echo "~$USER")
+    else
+        home_dir="/tmp"
+    fi
     local backups=$(ls -1 "$home_dir"/kiosk-backup-*.tar.gz 2>/dev/null | head -10)
 
     if [[ -n "$backups" ]]; then
