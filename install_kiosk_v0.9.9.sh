@@ -10429,6 +10429,134 @@ import_settings() {
     pause
 }
 
+upgrade_kiosk() {
+    clear
+    echo "══════════════════════════════════════════════════════════"
+    echo "   UPGRADE KIOSK APP (v$SCRIPT_VERSION)                    "
+    echo "══════════════════════════════════════════════════════════"
+    echo
+    echo "This will upgrade the kiosk application while preserving:"
+    echo "  • All your site configurations"
+    echo "  • Schedules and timers"
+    echo "  • Password settings"
+    echo "  • Addon configurations (Squeezelite, VNC, VPN, etc.)"
+    echo
+    echo "Process:"
+    echo "  1. Auto-export all settings"
+    echo "  2. Reinstall application files"
+    echo "  3. Auto-import all settings"
+    echo
+    read -r -p "Continue with upgrade? (yes/no): " confirm
+    [[ "$confirm" != "yes" ]] && return
+
+    local backup_file="/tmp/kiosk-upgrade-backup-$$.tar.gz"
+
+    echo
+    echo "[1/4] Exporting current settings..."
+
+    # Create backup directory
+    local export_dir="/tmp/kiosk-upgrade-export-$$"
+    mkdir -p "$export_dir"
+
+    # Export config
+    [[ -f "$CONFIG_PATH" ]] && sudo cp "$CONFIG_PATH" "$export_dir/config.json"
+
+    # Export timers
+    mkdir -p "$export_dir/timers"
+    for timer in kiosk-shutdown kiosk-display-off kiosk-display-on kiosk-quiet-start kiosk-quiet-end kiosk-electron-reload; do
+        [[ -f "/etc/systemd/system/${timer}.timer" ]] && sudo cp "/etc/systemd/system/${timer}.timer" "$export_dir/timers/"
+        [[ -f "/etc/systemd/system/${timer}.service" ]] && sudo cp "/etc/systemd/system/${timer}.service" "$export_dir/timers/"
+    done
+
+    # Export other configs
+    [[ -f /usr/local/bin/squeezelite-start.sh ]] && sudo cp /usr/local/bin/squeezelite-start.sh "$export_dir/"
+    [[ -f /usr/local/bin/kiosk-quiet-start.sh ]] && sudo cp /usr/local/bin/kiosk-quiet-start.sh "$export_dir/"
+    [[ -f /usr/local/bin/kiosk-quiet-end.sh ]] && sudo cp /usr/local/bin/kiosk-quiet-end.sh "$export_dir/"
+
+    # Create backup archive
+    tar -czf "$backup_file" -C /tmp "$(basename "$export_dir")" 2>/dev/null
+    rm -rf "$export_dir"
+    log_success "Settings backed up"
+
+    echo "[2/4] Stopping kiosk and removing app files..."
+    sudo systemctl stop kiosk 2>/dev/null || true
+    sleep 1
+
+    # Remove app files but NOT the whole directory
+    sudo rm -f "$KIOSK_DIR/main.js"
+    sudo rm -f "$KIOSK_DIR/preload.js"
+    sudo rm -f "$KIOSK_DIR/keyboard.html"
+    sudo rm -f "$KIOSK_DIR/keyboard-button.html"
+    sudo rm -f "$KIOSK_DIR/pause-dialog.html"
+    sudo rm -f "$KIOSK_DIR/pin-entry.html"
+    sudo rm -f "$KIOSK_DIR/inactivity-prompt-extended.html"
+    sudo rm -f "$KIOSK_DIR/lockout.html"
+    sudo rm -rf "$KIOSK_DIR/node_modules"
+    sudo rm -f "$KIOSK_DIR/package-lock.json"
+
+    echo "[3/4] Reinstalling application..."
+    echo
+    echo "The installer will now run. When prompted for configuration,"
+    echo "just press Enter to accept defaults - your settings will be"
+    echo "restored automatically afterward."
+    echo
+    read -r -p "Press Enter to continue..."
+
+    # Run the install - it will detect existing partial install
+    first_time_install
+
+    echo "[4/4] Restoring settings..."
+
+    # Extract and restore
+    local restore_dir="/tmp/kiosk-upgrade-restore-$$"
+    mkdir -p "$restore_dir"
+    tar -xzf "$backup_file" -C "$restore_dir" 2>/dev/null
+
+    local backup_dir=$(find "$restore_dir" -maxdepth 1 -type d -name "kiosk-upgrade-*" | head -1)
+    [[ -z "$backup_dir" ]] && backup_dir="$restore_dir"
+
+    # Restore config
+    if [[ -f "$backup_dir/config.json" ]]; then
+        sudo cp "$backup_dir/config.json" "$CONFIG_PATH"
+        sudo chown "$KIOSK_USER:$KIOSK_USER" "$CONFIG_PATH"
+        log_success "Config restored"
+    fi
+
+    # Restore timers
+    if [[ -d "$backup_dir/timers" ]]; then
+        for timer_file in "$backup_dir/timers"/*.timer; do
+            [[ -f "$timer_file" ]] || continue
+            sudo cp "$timer_file" /etc/systemd/system/
+        done
+        for service_file in "$backup_dir/timers"/*.service; do
+            [[ -f "$service_file" ]] || continue
+            sudo cp "$service_file" /etc/systemd/system/
+        done
+        sudo systemctl daemon-reload
+        log_success "Timers restored"
+    fi
+
+    # Restore other scripts
+    [[ -f "$backup_dir/squeezelite-start.sh" ]] && sudo cp "$backup_dir/squeezelite-start.sh" /usr/local/bin/ && sudo chmod +x /usr/local/bin/squeezelite-start.sh
+    [[ -f "$backup_dir/kiosk-quiet-start.sh" ]] && sudo cp "$backup_dir/kiosk-quiet-start.sh" /usr/local/bin/ && sudo chmod +x /usr/local/bin/kiosk-quiet-start.sh
+    [[ -f "$backup_dir/kiosk-quiet-end.sh" ]] && sudo cp "$backup_dir/kiosk-quiet-end.sh" /usr/local/bin/ && sudo chmod +x /usr/local/bin/kiosk-quiet-end.sh
+
+    # Cleanup
+    rm -rf "$restore_dir" "$backup_file"
+
+    echo
+    echo "Restarting kiosk..."
+    sudo systemctl restart kiosk
+    sleep 3
+
+    if systemctl is-active --quiet kiosk; then
+        log_success "Upgrade complete! Kiosk is running with your settings."
+    else
+        log_warning "Kiosk may not have started. Check: journalctl -u kiosk -n 50"
+    fi
+    pause
+}
+
 network_test() {
     echo
     echo " ═══ NETWORK TEST ═══"
@@ -10523,12 +10651,13 @@ core_menu() {
         echo "  6. Power/Display/Quiet Hours"
         echo "  7. Optional Features (Pause/Keyboard)"
         echo "  8. Password Protection & Lockout"
-        echo "  9. Hidden Site PIN"                    # <- ADD THIS
-        echo " 10. Full reinstall"
-        echo " 11. Complete uninstall"
+        echo "  9. Hidden Site PIN"
+        echo " 10. Upgrade (preserves settings)"
+        echo " 11. Full reinstall"
+        echo " 12. Complete uninstall"
         echo "  0. Return"
         echo
-        read -r -p "Choose [0-11]: " choice            # <- UPDATE THIS
+        read -r -p "Choose [0-12]: " choice
 
         case "$choice" in
             1) configure_timezone; pause ;;
@@ -10540,8 +10669,9 @@ core_menu() {
             7) load_existing_config; if configure_optional_features; then save_config; fi ;;
             8) load_existing_config; if configure_password_protection; then save_config; fi ;;
             9) configure_hidden_site_pin ;;
-            10) full_reinstall ;;
-            11) complete_uninstall; return ;;
+            10) upgrade_kiosk ;;
+            11) full_reinstall ;;
+            12) complete_uninstall; return ;;
             0) return ;;
         esac
     done
