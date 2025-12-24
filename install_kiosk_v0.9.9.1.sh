@@ -10549,6 +10549,13 @@ upgrade_kiosk() {
 
     echo "[4/6] Extracting new app files from script..."
 
+    # Ensure kiosk directory exists with correct ownership
+    if [[ ! -d "$KIOSK_DIR" ]]; then
+        echo "  Creating $KIOSK_DIR..."
+        sudo mkdir -p "$KIOSK_DIR"
+    fi
+    sudo chown "$KIOSK_USER:$KIOSK_USER" "$KIOSK_DIR"
+
     # Helper function to extract heredoc content using line numbers
     extract_file() {
         local start_pattern="$1"
@@ -10579,13 +10586,14 @@ upgrade_kiosk() {
         local content_start=$((start_line + 1))
         local content_end=$((start_line + end_offset - 2))
 
-        sed -n "${content_start},${content_end}p" "$script_path" | sudo -u "$KIOSK_USER" tee "$output_file" > /dev/null
+        # Extract content and write to file (use sudo tee for reliability)
+        sed -n "${content_start},${content_end}p" "$script_path" | sudo tee "$output_file" > /dev/null
 
         if [[ -s "$output_file" ]]; then
-            echo "  ✓ $fname"
+            echo "  ✓ $fname (lines $content_start-$content_end)"
             return 0
         else
-            echo "  ✗ $fname (empty)"
+            echo "  ✗ $fname (extracted 0 lines from $content_start-$content_end)"
             return 1
         fi
     }
