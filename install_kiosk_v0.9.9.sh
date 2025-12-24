@@ -10114,7 +10114,7 @@ export_settings() {
         if [[ -f "/etc/systemd/system/${timer}.timer" ]]; then
             sudo cp "/etc/systemd/system/${timer}.timer" "$export_dir/timers/"
             sudo cp "/etc/systemd/system/${timer}.service" "$export_dir/timers/" 2>/dev/null
-            ((timer_count++))
+            timer_count=$((timer_count + 1))
         fi
     done
     [[ $timer_count -gt 0 ]] && log_success "Exported $timer_count schedule timers" || log_info "No schedules configured"
@@ -10158,7 +10158,7 @@ export_settings() {
         mkdir -p "$export_dir/vpn/wireguard"
         sudo cp /etc/wireguard/*.conf "$export_dir/vpn/wireguard/" 2>/dev/null
         log_success "WireGuard config exported"
-        ((vpn_count++))
+        vpn_count=$((vpn_count + 1))
     fi
 
     # Netbird config and state
@@ -10173,7 +10173,7 @@ export_settings() {
         # Also check for user config
         [[ -d "$KIOSK_HOME/.netbird" ]] && sudo cp -r "$KIOSK_HOME/.netbird" "$export_dir/vpn/netbird/user-config" 2>/dev/null
         log_success "Netbird config exported"
-        ((vpn_count++))
+        vpn_count=$((vpn_count + 1))
     fi
 
     # OpenVPN configs
@@ -10181,7 +10181,7 @@ export_settings() {
         mkdir -p "$export_dir/vpn/openvpn"
         sudo cp -r /etc/openvpn/* "$export_dir/vpn/openvpn/" 2>/dev/null
         log_success "OpenVPN config exported"
-        ((vpn_count++))
+        vpn_count=$((vpn_count + 1))
     fi
 
     # Tailscale - just note if installed (requires re-auth)
@@ -10190,7 +10190,7 @@ export_settings() {
         echo "tailscale_installed=true" > "$export_dir/vpn/tailscale-info.txt"
         [[ -n "$ts_name" ]] && echo "hostname=$ts_name" >> "$export_dir/vpn/tailscale-info.txt"
         log_info "Tailscale installed (requires re-authentication after restore)"
-        ((vpn_count++))
+        vpn_count=$((vpn_count + 1))
     fi
 
     [[ $vpn_count -eq 0 ]] && log_info "No VPN configurations found"
@@ -10288,7 +10288,7 @@ import_settings() {
             sudo systemctl daemon-reload
             sudo systemctl enable "${timer_name}.timer" 2>/dev/null
             sudo systemctl start "${timer_name}.timer" 2>/dev/null
-            ((timer_count++))
+            timer_count=$((timer_count + 1))
         done
         [[ $timer_count -gt 0 ]] && log_success "Restored $timer_count schedule timers"
     fi
