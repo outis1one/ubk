@@ -5473,6 +5473,9 @@ function createWindow(){
           }
         })();
       `).catch(()=>{});
+    }else if(key==='Control'||key==='Alt'){
+      // Ignore modifier keys - they don't work as standalone keys
+      return;
     }else{
       view.webContents.executeJavaScript(`
         (function(){
