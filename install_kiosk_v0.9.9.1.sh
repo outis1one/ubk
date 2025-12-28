@@ -2646,9 +2646,13 @@ configure_display_schedule() {
     sudo tee /usr/local/bin/kiosk-display-off.sh > /dev/null <<EOF
 #!/bin/bash
 # Turn off display using multiple methods for reliability
+export DISPLAY=:0
+export XAUTHORITY=/home/kiosk/.Xauthority
+
+logger "KIOSK: Display OFF script starting"
 
 # Method 1: xset via kiosk user
-sudo -u $KIOSK_USER DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$kiosk_uid/bus xset dpms force off 2>/dev/null && echo "✓ xset dpms off" || echo "✗ xset failed"
+sudo -u kiosk DISPLAY=:0 XAUTHORITY=/home/kiosk/.Xauthority xset dpms force off 2>/dev/null && logger "KIOSK: xset dpms off success" || logger "KIOSK: xset dpms off failed"
 
 # Method 2: vbetool (if available)
 if command -v vbetool &>/dev/null; then
@@ -2672,9 +2676,13 @@ EOF
     sudo tee /usr/local/bin/kiosk-display-on.sh > /dev/null <<EOF
 #!/bin/bash
 # Turn on display using multiple methods for reliability
+export DISPLAY=:0
+export XAUTHORITY=/home/kiosk/.Xauthority
+
+logger "KIOSK: Display ON script starting"
 
 # Method 1: xset via kiosk user
-sudo -u $KIOSK_USER DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$kiosk_uid/bus xset dpms force on 2>/dev/null && echo "✓ xset dpms on" || echo "✗ xset failed"
+sudo -u kiosk DISPLAY=:0 XAUTHORITY=/home/kiosk/.Xauthority xset dpms force on 2>/dev/null && logger "KIOSK: xset dpms on success" || logger "KIOSK: xset dpms on failed"
 
 # Method 2: vbetool (if available)
 if command -v vbetool &>/dev/null; then
@@ -2691,10 +2699,10 @@ if [[ -d /sys/class/backlight ]]; then
 fi
 
 # Method 4: Wake up input (move mouse)
-sudo -u $KIOSK_USER DISPLAY=:0 xdotool mousemove 1 1 2>/dev/null && echo "✓ mouse wiggle" || echo "✗ mouse wiggle failed"
+sudo -u kiosk DISPLAY=:0 XAUTHORITY=/home/kiosk/.Xauthority xdotool mousemove 1 1 2>/dev/null && logger "KIOSK: mouse wiggle success" || logger "KIOSK: mouse wiggle failed"
 
 # Method 5: Signal Electron app to require password if enabled
-sudo -u $KIOSK_USER touch /home/$KIOSK_USER/kiosk-app/.display-wake 2>/dev/null && echo "✓ password flag set" || echo "✗ password flag failed"
+sudo -u kiosk touch /home/kiosk/kiosk-app/.display-wake 2>/dev/null && logger "KIOSK: password flag set" || logger "KIOSK: password flag failed"
 
 logger "KIOSK: Display turned ON (scheduled)"
 EOF
@@ -4016,6 +4024,14 @@ const {exec}=require('child_process');
 const fs=require('fs');
 const path=require('path');
 const os=require('os');
+
+// Suppress EPIPE errors (happen when no terminal attached)
+process.stdout.on('error',(e)=>{if(e.code!=='EPIPE')throw e;});
+process.stderr.on('error',(e)=>{if(e.code!=='EPIPE')throw e;});
+process.on('uncaughtException',(e)=>{
+  if(e.code==='EPIPE')return;
+  console.error('Uncaught:',e);
+});
 
 const CONFIG_FILE=path.join(__dirname,'config.json');
 const VERSION='0.9.9.1';
@@ -6502,6 +6518,43 @@ window.addEventListener('DOMContentLoaded',()=>{
 
     document.body.appendChild(navButton);
   }
+
+  // Power button in top-right corner
+  let powerButton=null;
+  function createPowerButton(){
+    if(powerButton)return;
+    powerButton=document.createElement('div');
+    powerButton.id='electron-power-button';
+    // Power icon SVG
+    powerButton.innerHTML='<svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/></svg>';
+    powerButton.title='Power Menu';
+    powerButton.style.cssText=`
+      position:fixed;top:20px;right:20px;width:50px;height:50px;
+      background:rgba(231,76,60,0.9);border:2px solid rgba(255,255,255,0.8);
+      border-radius:50%;display:flex;align-items:center;justify-content:center;
+      cursor:pointer;z-index:999999;
+      box-shadow:0 4px 12px rgba(0,0,0,0.4);user-select:none;
+      transition:transform 0.2s,background 0.2s;
+    `;
+    powerButton.addEventListener('mouseenter',()=>{
+      powerButton.style.transform='scale(1.1)';
+      powerButton.style.background='rgba(192,57,43,0.95)';
+    });
+    powerButton.addEventListener('mouseleave',()=>{
+      powerButton.style.transform='scale(1)';
+      powerButton.style.background='rgba(231,76,60,0.9)';
+    });
+    powerButton.addEventListener('click',(e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      console.log('[POWER] Button clicked');
+      ipcRenderer.send('show-power-menu');
+    });
+    document.body.appendChild(powerButton);
+  }
+
+  // Create power button on page load
+  setTimeout(createPowerButton,1000);
 
   function showNavButton(){
     if(!navButtonEnabled)return;
