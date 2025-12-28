@@ -6519,8 +6519,10 @@ window.addEventListener('DOMContentLoaded',()=>{
     document.body.appendChild(navButton);
   }
 
-  // Power button in top-right corner
+  // Power button in top-right corner (follows same show/hide logic as nav button)
   let powerButton=null;
+  let powerButtonHideTimer=null;
+  const POWER_BUTTON_HIDE_DELAY=5000; // Same as nav button
   function createPowerButton(){
     if(powerButton)return;
     powerButton=document.createElement('div');
@@ -6529,21 +6531,12 @@ window.addEventListener('DOMContentLoaded',()=>{
     powerButton.innerHTML='<svg width="28" height="28" viewBox="0 0 24 24" fill="white"><path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C17.99 7.86 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19 1.01-4.14 2.58-5.42L6.17 5.17C4.23 6.82 3 9.26 3 12c0 4.97 4.03 9 9 9s9-4.03 9-9c0-2.74-1.23-5.18-3.17-6.83z"/></svg>';
     powerButton.title='Power Menu';
     powerButton.style.cssText=`
-      position:fixed;top:20px;right:20px;width:50px;height:50px;
-      background:rgba(231,76,60,0.9);border:2px solid rgba(255,255,255,0.8);
-      border-radius:50%;display:flex;align-items:center;justify-content:center;
+      position:fixed;top:20px;right:20px;width:60px;height:60px;
+      background:rgba(231,76,60,0.95);border:3px solid rgba(255,255,255,0.9);
+      border-radius:50%;display:none;align-items:center;justify-content:center;
       cursor:pointer;z-index:999999;
       box-shadow:0 4px 12px rgba(0,0,0,0.4);user-select:none;
-      transition:transform 0.2s,background 0.2s;
     `;
-    powerButton.addEventListener('mouseenter',()=>{
-      powerButton.style.transform='scale(1.1)';
-      powerButton.style.background='rgba(192,57,43,0.95)';
-    });
-    powerButton.addEventListener('mouseleave',()=>{
-      powerButton.style.transform='scale(1)';
-      powerButton.style.background='rgba(231,76,60,0.9)';
-    });
     powerButton.addEventListener('click',(e)=>{
       e.preventDefault();
       e.stopPropagation();
@@ -6553,8 +6546,34 @@ window.addEventListener('DOMContentLoaded',()=>{
     document.body.appendChild(powerButton);
   }
 
-  // Create power button on page load
-  setTimeout(createPowerButton,1000);
+  function showPowerButton(){
+    if(!powerButton)createPowerButton();
+    if(powerButton){
+      powerButton.style.display='flex';
+    }
+
+    // Clear existing hide timer
+    if(powerButtonHideTimer){
+      clearTimeout(powerButtonHideTimer);
+      powerButtonHideTimer=null;
+    }
+
+    // Set new hide timer - button will auto-hide after inactivity
+    powerButtonHideTimer=setTimeout(()=>{
+      console.log('[POWER-BTN] Auto-hiding after '+POWER_BUTTON_HIDE_DELAY+'ms inactivity');
+      hidePowerButton();
+    },POWER_BUTTON_HIDE_DELAY);
+  }
+
+  function hidePowerButton(){
+    if(powerButtonHideTimer){
+      clearTimeout(powerButtonHideTimer);
+      powerButtonHideTimer=null;
+    }
+    if(powerButton){
+      powerButton.style.display='none';
+    }
+  }
 
   function showNavButton(){
     if(!navButtonEnabled)return;
@@ -6956,6 +6975,9 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(navButtonEnabled){
       showNavButton();
     }
+
+    // Always show power button on user interaction
+    showPowerButton();
   }
 
   // Show pause button on any user interaction
